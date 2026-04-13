@@ -1,0 +1,283 @@
+.monthly-summary-page {
+  min-height: calc(100vh - 70px);
+  padding: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
+  font-weight: 700;
+  color: #000;
+}
+
+.monthly-summary-page * {
+  font-weight: 700;
+  color: #000;
+}
+
+.summary-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.summary-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1d2a44;
+}
+
+.summary-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: #000;
+}
+
+.summary-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.summary-search {
+  position: relative;
+  min-width: 220px;
+}
+
+.summary-search i {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #000;
+  font-size: 0.8rem;
+}
+
+.summary-search input {
+  padding-left: 28px;
+}
+
+.summary-month {
+  width: 145px;
+}
+
+.summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-metric {
+  background: #fff;
+  border: 1px solid #e8eef8;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.summary-metric-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #000;
+  margin-bottom: 4px;
+}
+
+.summary-metric-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #000;
+  line-height: 1.2;
+}
+
+.summary-table-wrap {
+  background: #fff;
+  border: 1px solid #e6edf8;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.summary-loading {
+  background: #f2f2f2;
+  color: #000;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+
+.summary-table {
+  font-size: 0.84rem;
+}
+
+.summary-table th {
+  background: #f5f5f5;
+  color: #000;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom: 1px solid #e0e8f5;
+  padding: 9px 8px;
+}
+
+.summary-table td {
+  border-color: #edf2fb;
+  padding: 8px;
+  vertical-align: middle;
+}
+
+.summary-table td,
+.summary-table th,
+.summary-metric-label,
+.summary-subtitle,
+.summary-company,
+.summary-date-input,
+.summary-loading {
+  font-weight: 700;
+}
+
+.summary-controls input,
+.summary-controls button,
+.summary-controls select,
+.summary-date-input {
+  font-weight: 700;
+}
+
+.summary-name {
+  color: #000;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.summary-name:hover {
+  color: #000;
+}
+
+.summary-company {
+  font-size: 0.74rem;
+  color: #000;
+}
+
+.summary-date-input {
+  border: 1px solid #000;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  padding: 4px 6px;
+  width: 100%;
+  min-width: 140px;
+  color: #000;
+  background: #fff;
+}
+
+.summary-next-pay-col {
+  width: 160px;
+}
+
+@media (max-width: 1200px) {
+  .summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .monthly-summary-page {
+    padding: 10px;
+  }
+
+  .summary-controls {
+    width: 100%;
+  }
+
+  .summary-search {
+    min-width: 100%;
+  }
+
+  .summary-month {
+    width: 100%;
+  }
+
+  .summary-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-table {
+    font-size: 0.8rem;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 6mm;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    background: #fff !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .monthly-summary-page {
+    min-height: auto !important;
+    height: auto !important;
+    padding: 0;
+    background: #fff !important;
+  }
+
+  .summary-table-wrap {
+    --ms-print-scale-safe: var(--ms-print-scale, 1);
+    border: none;
+    padding: 0;
+    margin: 0;
+    transform: scale(var(--ms-print-scale-safe));
+    transform-origin: top left;
+    width: calc(100% / var(--ms-print-scale-safe));
+    box-shadow: none;
+    overflow: visible !important;
+  }
+
+  .summary-table {
+    width: 100% !important;
+    font-size: 10.5px;
+    table-layout: fixed;
+  }
+
+  .table-responsive {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .summary-table th,
+  .summary-table td {
+    padding: 3px 4px;
+    line-height: 1.1;
+    font-weight: 700;
+    color: #000;
+  }
+
+  .summary-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .summary-company {
+    display: none !important;
+  }
+
+  /* Hide least-critical column in print so text remains readable */
+  .summary-table th:last-child,
+  .summary-table td:last-child {
+    display: none;
+  }
+}

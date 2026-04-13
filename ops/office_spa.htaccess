@@ -1,0 +1,15 @@
+Options +FollowSymLinks -Indexes
+DirectoryIndex index.html
+
+RewriteEngine On
+
+# Always serve real files/dirs directly from Apache first.
+# This keeps /uploads available even when Node is restarting.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Active API upstream (managed by scripts/switch_api_upstream.sh)
+RewriteRule ^api/(.*)$ http://127.0.0.1:5000/api/$1 [P,L]
+
+RewriteRule ^ index.html [L]

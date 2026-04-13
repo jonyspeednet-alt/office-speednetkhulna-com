@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env*
+
+# WhatsApp Auth/Cache (local)
+.wwebjs_auth/
+.wwebjs_cache/
+.wwebjs_auth_probe/
+server/.wwebjs_auth/
+server/.wwebjs_cache/
+whatsapp-worker/.wwebjs_auth/
+whatsapp-worker/.wwebjs_cache/
+
+# Browser automation artifacts
+.browser-test/
+.browser_libs/
+tools/node/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+client/dist/
+
+# Database backups
+*.sql
+*.sql.gz
+*.zip
+github_share_repo_*/
+ssh_key
+ACCESS_CREDENTIALS.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Local secret notes
+secrets/
+secrets/*.local.md
+secrets/*.local.txt
