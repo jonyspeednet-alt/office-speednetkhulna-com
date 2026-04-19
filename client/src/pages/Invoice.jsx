@@ -210,6 +210,10 @@ const Invoice = () => {
 
   const dynamicTotal = Array.isArray(items) ? items.reduce((sum, row) => sum + Number(row?.total || 0), 0) : 0;
   const totalAmount = parseFloat(bill?.final_amount ?? (dynamicTotal > 0 ? dynamicTotal : (reseller?.projected_bill ?? 0)));
+  const otcItems = Array.isArray(items) ? items.filter((item) => item?.desc === 'OTC') : [];
+  const displayItems = Array.isArray(items) ? items.filter((item) => item?.desc !== 'OTC') : [];
+  const otcAmount = otcItems.reduce((sum, item) => sum + Number(item?.total || 0), 0);
+  const runningBillAmount = Math.max(0, Number(totalAmount || 0) - otcAmount);
   const adj = parseFloat(bill?.adjustment ?? 0);
   const adjNote = bill?.adjustment_note ?? '';
   const prevDue = parseFloat(bill?.previous_due ?? reseller?.due_amount ?? 0);
@@ -218,7 +222,7 @@ const Invoice = () => {
   const hasLegacyAdjustment = Math.abs(adj) > 0.0001;
 
   const typeCounts = {};
-  items.forEach((item) => { typeCounts[item.desc] = (typeCounts[item.desc] || 0) + 1; });
+  displayItems.forEach((item) => { typeCounts[item.desc] = (typeCounts[item.desc] || 0) + 1; });
   const typeShown = {};
 
   return (
@@ -298,7 +302,7 @@ const Invoice = () => {
           </div>
 
           <div className="table-responsive">
-            {items.length > 0 ? (
+            {displayItems.length > 0 ? (
               <table className="inv-table">
                 <thead>
                   <tr>
@@ -312,7 +316,7 @@ const Invoice = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item, idx) => {
+                  {displayItems.map((item, idx) => {
                     const isFirst = !typeShown[item.desc];
                     if (isFirst) typeShown[item.desc] = true;
                     return (
@@ -343,7 +347,8 @@ const Invoice = () => {
               <table className="table table-borderless inv-summary mb-0">
                 <tbody>
                   <tr><td className="text-end text-muted">{t('invoice.previousDue')}</td><td className="text-end text-muted fw-semibold">{fmtTk(prevDue)}</td></tr>
-                  <tr><td className="text-end">{t('invoice.currentBill')}</td><td className="text-end fw-bold">{fmtTk(totalAmount)}</td></tr>
+                  <tr><td className="text-end">{t('invoice.currentBill')}</td><td className="text-end fw-bold">{fmtTk(runningBillAmount)}</td></tr>
+                  {otcAmount > 0 && <tr><td className="text-end text-warning-emphasis">OTC Charge</td><td className="text-end fw-bold text-warning-emphasis">{fmtTk(otcAmount)}</td></tr>}
                   <tr><td className="text-end fw-bold" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>{t('invoice.subTotal')}</td><td className="text-end fw-bold" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>{fmtTk(prevDue + totalAmount)}</td></tr>
                   {hasLegacyAdjustment && (
                     <tr>

@@ -142,6 +142,33 @@
   line-height: 1;
 }
 
+.asset-management-page .asset-quick-card {
+  border-radius: 1.15rem;
+  border: 1px solid var(--asset-border);
+  background: linear-gradient(145deg, rgba(255, 253, 247, 0.98), rgba(255, 255, 255, 0.92));
+}
+
+.asset-management-page .asset-inline-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.asset-management-page .asset-inline-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #475569;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 .asset-management-page .asset-tab-rail {
   border-radius: 1.2rem;
   border: 1px solid var(--asset-border);

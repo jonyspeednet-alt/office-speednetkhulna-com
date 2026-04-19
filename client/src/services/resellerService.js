@@ -3,6 +3,7 @@
 export const getResellers = async (search = '', options = {}) => {
   const params = { search };
   if (options.status) params.status = options.status;
+  if (options.partner_type) params.partner_type = options.partner_type;
   return (await apiClient.get('/api/resellers/resellers', { params })).data;
 };
 export const getPartnerSheetRows = async (tab) => (await apiClient.get('/api/resellers/partner-sheets', { params: { tab } })).data;

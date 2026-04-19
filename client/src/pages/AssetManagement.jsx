@@ -41,6 +41,24 @@ const Card = ({ label, value, hint, tone }) => (
   </div>
 );
 
+const QuickActionCard = ({ title, value, hint, buttonLabel, onClick, tone = 'primary' }) => (
+  <div className="card border-0 shadow-sm h-100 asset-quick-card">
+    <div className="card-body d-flex flex-column">
+      <div className="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <div className="text-uppercase small fw-semibold text-muted">{title}</div>
+          <div className="display-6 fw-bold mb-1">{value}</div>
+        </div>
+        <span className={`badge text-bg-${tone}`}>{buttonLabel}</span>
+      </div>
+      <div className="text-muted small mb-3">{hint}</div>
+      <button type="button" className="btn btn-sm btn-outline-dark mt-auto align-self-start" onClick={onClick}>
+        Open
+      </button>
+    </div>
+  </div>
+);
+
 const inputClass = 'form-control';
 
 const emptyWarrantyForm = {
@@ -258,6 +276,9 @@ const AssetManagement = () => {
     repair_cost_summary: []
   });
   const [search, setSearch] = useState('');
+  const [assetOfficeFilter, setAssetOfficeFilter] = useState('all');
+  const [assetCategoryFilter, setAssetCategoryFilter] = useState('all');
+  const [assetStatusFilter, setAssetStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('assets');
   const [editingAsset, setEditingAsset] = useState(null);
@@ -369,6 +390,14 @@ const AssetManagement = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      load(search);
+    }, 300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const loadAssetComponentData = async (assetId) => {
     if (!assetId) {
@@ -710,6 +739,39 @@ const AssetManagement = () => {
     { key: 'movements', label: 'Movements' },
     { key: 'stock', label: 'Stock Room' }
   ];
+
+  const assetStatusOptions = useMemo(() => {
+    const unique = new Set(
+      assets
+        .map((asset) => String(asset.status || '').trim())
+        .filter(Boolean)
+    );
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [assets]);
+
+  const filteredAssets = useMemo(() => (
+    assets.filter((asset) => {
+      const officeMatch = assetOfficeFilter === 'all' || String(asset.office_id) === String(assetOfficeFilter);
+      const categoryMatch = assetCategoryFilter === 'all' || String(asset.category_id) === String(assetCategoryFilter);
+      const statusMatch = assetStatusFilter === 'all' || String(asset.status) === String(assetStatusFilter);
+      return officeMatch && categoryMatch && statusMatch;
+    })
+  ), [assets, assetOfficeFilter, assetCategoryFilter, assetStatusFilter]);
+
+  const filteredAssetSummary = useMemo(() => ({
+    active: filteredAssets.filter((asset) => String(asset.status || '').toLowerCase() === 'active').length,
+    warrantySoon: filteredAssets.filter((asset) => {
+      const raw = String(asset.warranty_end_date || '').trim();
+      if (!raw) return false;
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())) return false;
+      const now = new Date();
+      const in30Days = new Date();
+      in30Days.setDate(now.getDate() + 30);
+      return date >= now && date <= in30Days;
+    }).length,
+    assigned: filteredAssets.filter((asset) => asset.desk_id || asset.assigned_user_id).length
+  }), [filteredAssets]);
 
   const deskCards = useMemo(() => {
     const query = deskSearch.trim().toLowerCase();
@@ -1110,10 +1172,48 @@ const AssetManagement = () => {
           <div className="text-muted small">Use Add Asset to register new devices with office/desk assignment.</div>
         </div>
         <div className="d-flex align-items-center gap-2">
-          <span className="text-muted small">{assets.length} records</span>
+          <span className="text-muted small">{filteredAssets.length} / {assets.length} records</span>
           <button type="button" className="btn btn-sm btn-primary" onClick={openAddAsset}>
             Add Asset
           </button>
+        </div>
+      </div>
+      <div className="card-body border-bottom bg-light-subtle">
+        <div className="row g-3 align-items-end">
+          <div className="col-md-3">
+            <label className="form-label small text-muted">Office</label>
+            <select className="form-select" value={assetOfficeFilter} onChange={(e) => setAssetOfficeFilter(e.target.value)}>
+              <option value="all">All offices</option>
+              {masters.offices.map((office) => (
+                <option key={office.id} value={office.id}>{office.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <label className="form-label small text-muted">Category</label>
+            <select className="form-select" value={assetCategoryFilter} onChange={(e) => setAssetCategoryFilter(e.target.value)}>
+              <option value="all">All categories</option>
+              {masters.categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <label className="form-label small text-muted">Status</label>
+            <select className="form-select" value={assetStatusFilter} onChange={(e) => setAssetStatusFilter(e.target.value)}>
+              <option value="all">All status</option>
+              {assetStatusOptions.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-md-3">
+            <div className="asset-inline-stats">
+              <span><strong>{filteredAssetSummary.active}</strong> active</span>
+              <span><strong>{filteredAssetSummary.assigned}</strong> assigned</span>
+              <span><strong>{filteredAssetSummary.warrantySoon}</strong> expiring</span>
+            </div>
+          </div>
         </div>
       </div>
       <div className="table-responsive">
@@ -1132,7 +1232,7 @@ const AssetManagement = () => {
             </tr>
           </thead>
           <tbody>
-            {assets.map((asset) => (
+            {filteredAssets.map((asset) => (
               <tr key={asset.id}>
                 <td>
                   <div className="fw-bold">{asset.asset_name}</div>
@@ -1140,12 +1240,13 @@ const AssetManagement = () => {
                   <div className="small text-muted">{asset.brand || '-'} {asset.model ? `- ${asset.model}` : ''}</div>
                 </td>
                 <td>{asset.category_name || '-'}</td>
-                <td>
+<td>
                   <span className="badge bg-primary-subtle text-primary-emphasis">{asset.component_count || 0}</span>
                 </td>
                 <td>
                   <div>{asset.office_name || '-'}</div>
                   <div className="small text-muted">{asset.desk_no ? `Desk ${asset.desk_no}` : '-'}</div>
+                  {asset.desk_label && <div className="small text-info">{asset.desk_label}</div>}
                 </td>
                 <td>{asset.vendor_name || '-'}</td>
                 <td>
@@ -1161,7 +1262,7 @@ const AssetManagement = () => {
                 </td>
               </tr>
             ))}
-            {!assets.length && !loading && (
+            {!filteredAssets.length && !loading && (
               <tr>
                 <td colSpan="9" className="text-muted text-center py-4">No assets found</td>
               </tr>
@@ -1174,6 +1275,36 @@ const AssetManagement = () => {
 
   const renderDashboardTab = () => (
     <div className="row g-4">
+      <div className="col-lg-4">
+        <QuickActionCard
+          title="Asset Register"
+          value={assets.length}
+          hint="Search, filter, and update device records quickly."
+          buttonLabel="Assets"
+          onClick={() => setActiveTab('assets')}
+          tone="primary"
+        />
+      </div>
+      <div className="col-lg-4">
+        <QuickActionCard
+          title="Open Issues"
+          value={issues.filter((issue) => String(issue.status || '').toLowerCase() !== 'resolved').length}
+          hint="Jump straight to unresolved hardware issues and warranty claims."
+          buttonLabel="Issues"
+          onClick={() => setActiveTab('issues')}
+          tone="danger"
+        />
+      </div>
+      <div className="col-lg-4">
+        <QuickActionCard
+          title="Low Stock"
+          value={stockItems.filter((item) => Number(item.quantity_on_hand || 0) <= Number(item.minimum_quantity || 0)).length}
+          hint="See spare parts that need replenishment before stock-outs happen."
+          buttonLabel="Stock"
+          onClick={() => setActiveTab('stock')}
+          tone="warning"
+        />
+      </div>
       <div className="col-lg-7">
         <div className="card shadow-sm h-100">
           <div className="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
@@ -1822,11 +1953,11 @@ const AssetManagement = () => {
           <tbody>
                 {stockItems.map((item) => (
                   <tr key={item.id}>
-                    <td>
-                      <div className="fw-semibold">{item.item_name}</div>
-                      <div className="small text-muted">{item.item_code}</div>
-                      <div className="small text-muted">{item.category_name || '-'}</div>
-                    </td>
+<td>
+                  <div>{asset.office_name || '-'}</div>
+                  <div className="small text-muted">{asset.desk_no ? `Desk ${asset.desk_no}` : '-'}</div>
+                  {asset.desk_label && <div className="small text-info">{asset.desk_label}</div>}
+                </td>
                     <td>{item.quantity_on_hand}</td>
                     <td>{item.minimum_quantity}</td>
                     <td>{item.office_name || '-'}</td>
@@ -2029,45 +2160,55 @@ const AssetManagement = () => {
               </div>
               <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>Close</button>
             </div>
-            <form onSubmit={onSubmit} className="p-4">
+<form onSubmit={onSubmit} className="p-4">
               {isAsset ? (
                 <div className="row g-3">
-                  <div className="col-md-4"><input className={inputClass} placeholder="Asset tag" value={formState.asset_tag} onChange={(e) => setFormState((prev) => ({ ...prev, asset_tag: e.target.value }))} /></div>
-                  <div className="col-md-8"><input className={inputClass} placeholder="Asset name" value={formState.asset_name} onChange={(e) => setFormState((prev) => ({ ...prev, asset_name: e.target.value }))} /></div>
-                  <div className="col-md-4">
+                  <div className="col-12"><div className="fw-bold text-primary pb-2 border-bottom">Basic Information</div></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Asset Tag</label><input className={inputClass} placeholder="SN-LAPTOP-001" value={formState.asset_tag} onChange={(e) => setFormState((prev) => ({ ...prev, asset_tag: e.target.value }))} /></div>
+                  <div className="col-md-8"><label className="form-label small text-muted">Asset Name</label><input className={inputClass} placeholder="Dell XPS 15 Laptop" value={formState.asset_name} onChange={(e) => setFormState((prev) => ({ ...prev, asset_name: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Category</label>
                     <select className={inputClass} value={formState.category_id} onChange={(e) => setFormState((prev) => ({ ...prev, category_id: e.target.value }))}>
-                      <option value="">Category</option>
+                      <option value="">Select Category</option>
                       {masters.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                     </select>
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-4"><label className="form-label small text-muted">Vendor</label>
                     <select className={inputClass} value={formState.vendor_id} onChange={(e) => setFormState((prev) => ({ ...prev, vendor_id: e.target.value }))}>
-                      <option value="">Vendor</option>
+                      <option value="">Select Vendor</option>
                       {masters.vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
                     </select>
                   </div>
-                  <div className="col-md-4">
-                    <select className={inputClass} value={formState.office_id} onChange={(e) => setFormState((prev) => ({ ...prev, office_id: e.target.value }))}>
-                      <option value="">Office</option>
+                  <div className="col-md-4"><label className="form-label small text-muted">Status</label>
+                    <select className={inputClass} value={formState.status} onChange={(e) => setFormState((prev) => ({ ...prev, status: e.target.value }))}>
+                      <option value="in_stock">In Stock</option>
+                      <option value="active">Active</option>
+                      <option value="maintenance">Maintenance</option>
+                      <option value="repair">Under Repair</option>
+                      <option value="broken">Broken</option>
+                      <option value="replaced">Replaced</option>
+                    </select>
+                  </div>
+                  <div className="col-12"><div className="fw-bold text-primary py-2 border-bottom">Location & Assignment</div></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Office</label>
+                    <select className={inputClass} value={formState.office_id} onChange={(e) => setFormState((prev) => ({ ...prev, office_id: e.target.value, desk_id: '' }))}>
+                      <option value="">Select Office</option>
                       {masters.offices.map((office) => <option key={office.id} value={office.id}>{office.name}</option>)}
                     </select>
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-4"><label className="form-label small text-muted">Desk</label>
                     <select className={inputClass} value={formState.desk_id} onChange={(e) => setFormState((prev) => ({ ...prev, desk_id: e.target.value }))}>
-                      <option value="">Desk</option>
+                      <option value="">Select Desk</option>
                       {masters.desks
                         .filter((desk) => !formState.office_id || String(desk.office_id) === String(formState.office_id))
-                        .map((desk) => <option key={desk.id} value={desk.id}>Desk {desk.desk_no} - {desk.office_name}</option>)}
+                        .map((desk) => <option key={desk.id} value={desk.id}>
+                          {desk.desk_no}{desk.floor_label ? ` (${desk.floor_label})` : ''} - {desk.office_code}
+{desk.desk_label ? ` → ${desk.desk_label}` : desk.assigned_user_name ? ` → ${desk.assigned_user_name.split(' ')[0]}` : ''}
+                        </option>)}
                     </select>
                   </div>
-                  <div className="col-md-4"><input className={inputClass} placeholder="Brand" value={formState.brand} onChange={(e) => setFormState((prev) => ({ ...prev, brand: e.target.value }))} /></div>
-                  <div className="col-md-4"><input className={inputClass} placeholder="Model" value={formState.model} onChange={(e) => setFormState((prev) => ({ ...prev, model: e.target.value }))} /></div>
-                  <div className="col-md-4"><input className={inputClass} placeholder="Serial number" value={formState.serial_number} onChange={(e) => setFormState((prev) => ({ ...prev, serial_number: e.target.value }))} /></div>
-                  <div className="col-md-4"><input className={inputClass} type="date" value={formState.purchase_date} onChange={(e) => setFormState((prev) => ({ ...prev, purchase_date: e.target.value }))} /></div>
-                  <div className="col-md-4"><input className={inputClass} type="number" step="0.01" placeholder="Purchase price" value={formState.purchase_price} onChange={(e) => setFormState((prev) => ({ ...prev, purchase_price: e.target.value }))} /></div>
-                  <div className="col-md-4">
+                  <div className="col-md-4"><label className="form-label small text-muted">Assigned To</label>
                     <select className={inputClass} value={formState.assigned_user_id} onChange={(e) => setFormState((prev) => ({ ...prev, assigned_user_id: e.target.value }))}>
-                      <option value="">Assigned user</option>
+                      <option value="">Select User</option>
                       {masters.users.map((user) => (
                         <option key={user.id} value={user.id}>
                           {user.full_name}{user.designation ? ` - ${user.designation}` : ''}{user.department ? ` (${user.department})` : ''}
@@ -2075,28 +2216,24 @@ const AssetManagement = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="col-md-4"><input className={inputClass} type="date" value={formState.warranty_start_date} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_start_date: e.target.value }))} /></div>
-                  <div className="col-md-4"><input className={inputClass} type="date" value={formState.warranty_end_date} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_end_date: e.target.value }))} /></div>
-                  <div className="col-md-4"><input className={inputClass} placeholder="Warranty type" value={formState.warranty_type} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_type: e.target.value }))} /></div>
-                  <div className="col-md-4">
-                    <select className={inputClass} value={formState.status} onChange={(e) => setFormState((prev) => ({ ...prev, status: e.target.value }))}>
-                      <option value="in_stock">In stock</option>
-                      <option value="active">Active</option>
-                      <option value="maintenance">Maintenance</option>
-                      <option value="repair">Repair</option>
-                      <option value="broken">Broken</option>
-                      <option value="replaced">Replaced</option>
-                    </select>
-                  </div>
-                  <div className="col-md-4">
+                  <div className="col-12"><div className="fw-bold text-primary py-2 border-bottom">Hardware Details</div></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Brand</label><input className={inputClass} placeholder="Dell" value={formState.brand} onChange={(e) => setFormState((prev) => ({ ...prev, brand: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Model</label><input className={inputClass} placeholder="XPS 15 9520" value={formState.model} onChange={(e) => setFormState((prev) => ({ ...prev, model: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Serial Number</label><input className={inputClass} placeholder="SN123456789" value={formState.serial_number} onChange={(e) => setFormState((prev) => ({ ...prev, serial_number: e.target.value }))} /></div>
+                  <div className="col-12"><div className="fw-bold text-primary py-2 border-bottom">Purchase & Warranty</div></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Purchase Date</label><input className={inputClass} type="date" value={formState.purchase_date} onChange={(e) => setFormState((prev) => ({ ...prev, purchase_date: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Purchase Price (Tk)</label><input className={inputClass} type="number" step="0.01" placeholder="135000" value={formState.purchase_price} onChange={(e) => setFormState((prev) => ({ ...prev, purchase_price: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Warranty Type</label><input className={inputClass} placeholder="Manufacturer (3 Years)" value={formState.warranty_type} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_type: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Warranty Start</label><input className={inputClass} type="date" value={formState.warranty_start_date} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_start_date: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Warranty End</label><input className={inputClass} type="date" value={formState.warranty_end_date} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_end_date: e.target.value }))} /></div>
+                  <div className="col-md-4"><label className="form-label small text-muted">Condition</label>
                     <select className={inputClass} value={formState.condition} onChange={(e) => setFormState((prev) => ({ ...prev, condition: e.target.value }))}>
                       <option value="good">Good</option>
                       <option value="fair">Fair</option>
                       <option value="poor">Poor</option>
                     </select>
                   </div>
-                  <div className="col-12"><textarea className={inputClass} rows="3" placeholder="Asset notes" value={formState.notes} onChange={(e) => setFormState((prev) => ({ ...prev, notes: e.target.value }))} /></div>
-                  <div className="col-12"><textarea className={inputClass} rows="2" placeholder="Warranty notes" value={formState.warranty_notes} onChange={(e) => setFormState((prev) => ({ ...prev, warranty_notes: e.target.value }))} /></div>
+                  <div className="col-12"><label className="form-label small text-muted">Notes</label><textarea className={inputClass} rows="3" placeholder="Additional notes about this asset..." value={formState.notes} onChange={(e) => setFormState((prev) => ({ ...prev, notes: e.target.value }))} /></div>
                   {!creatingAsset && editingAsset && (
                     <div className="col-12">
                       <div className="asset-component-shell">

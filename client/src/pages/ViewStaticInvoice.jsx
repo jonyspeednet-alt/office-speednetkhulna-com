@@ -147,15 +147,21 @@ const ViewStaticInvoice = () => {
     const hasLegacyAdjustment = Math.abs(adjustment) > 0.0001;
     const netPayable = Number((prevDue + totalAmount + adjustment - totalPaid - totalDiscount).toFixed(2));
 
+    const otcItems = Array.isArray(items) ? items.filter((item) => item?.desc === 'OTC') : [];
+    const displayItems = Array.isArray(items) ? items.filter((item) => item?.desc !== 'OTC') : [];
+    const otcAmount = otcItems.reduce((sum, item) => sum + Number(item?.total || 0), 0);
+    const runningBillAmount = Math.max(0, Number(totalAmount || 0) - otcAmount);
     const typeCounts = {};
-    items.forEach((item) => {
+    displayItems.forEach((item) => {
       typeCounts[item?.desc] = (typeCounts[item?.desc] || 0) + 1;
     });
 
     return {
       reseller,
       bill,
-      items,
+      items: displayItems,
+      otcAmount,
+      runningBillAmount,
       totalPaid,
       totalDiscount,
       totalAmount,
@@ -171,7 +177,7 @@ const ViewStaticInvoice = () => {
   if (loading) return <div className="container py-5 text-center">{t('invoice.loading')}</div>;
   if (error || !normalized) return <div className="container py-5 text-center text-danger">{error || t('invoice.staticNotFound')}</div>;
 
-  const { reseller, bill, items, totalPaid, totalDiscount, totalAmount, prevDue, adjustment, adjustmentNote, hasLegacyAdjustment, netPayable, typeCounts } = normalized;
+  const { reseller, bill, items, otcAmount, runningBillAmount, totalPaid, totalDiscount, totalAmount, prevDue, adjustment, adjustmentNote, hasLegacyAdjustment, netPayable, typeCounts } = normalized;
   const monthName = toMonthName(data?.month || bill?.bill_month);
   const invoiceDate = toInvoiceDate(bill?.created_at || data?.created_at);
   const typeShown = {};
@@ -261,7 +267,8 @@ const ViewStaticInvoice = () => {
               <table className="table table-borderless inv-summary mb-0">
                 <tbody>
                   <tr><td className="text-end text-muted">{t('invoice.previousDue')}</td><td className="text-end text-muted fw-semibold">{fmt(prevDue)} {CURRENCY}</td></tr>
-                  <tr><td className="text-end">{t('invoice.currentBill')}</td><td className="text-end fw-bold">{fmt(totalAmount)} {CURRENCY}</td></tr>
+                  <tr><td className="text-end">{t('invoice.currentBill')}</td><td className="text-end fw-bold">{fmt(runningBillAmount)} {CURRENCY}</td></tr>
+                  {otcAmount > 0 && <tr><td className="text-end text-warning-emphasis">OTC Charge</td><td className="text-end fw-bold text-warning-emphasis">{fmt(otcAmount)} {CURRENCY}</td></tr>}
                   <tr><td className="text-end fw-bold" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>{t('invoice.subTotal')}</td><td className="text-end fw-bold" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>{fmt(prevDue + totalAmount)} {CURRENCY}</td></tr>
                   {hasLegacyAdjustment && (
                     <tr>

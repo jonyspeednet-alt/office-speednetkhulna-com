@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getPartnerSheetRows, getResellers } from '../services/resellerService';
+import { getResellers } from '../services/resellerService';
 
 const PARTNER_TABS = {
-  active: { label: 'Active Resellers', kind: 'db' },
-  inactive: { label: 'Inactive Resellers', kind: 'db' },
-  mac_partner: { label: 'Mac Partner', kind: 'sheet' },
-  distribution_partner: { label: 'Distribution Partner', kind: 'sheet' }
+  mac_partner: { label: 'Mac Partner', kind: 'db' },
+  channel_partner: { label: 'Channel Partner', kind: 'db' },
+  distribution_partner: { label: 'Distribution Partner', kind: 'db' }
 };
 
 const bw = (val) => `${Number(val || 0)} Mbps`;
@@ -39,11 +38,11 @@ const ResellerList = () => {
   const [rows, setRows] = useState([]);
   const [sheetMeta, setSheetMeta] = useState({ headers: [], title: '' });
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState('distribution_partner');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const tabConfig = PARTNER_TABS[activeTab] || PARTNER_TABS.active;
+  const tabConfig = PARTNER_TABS[activeTab] || PARTNER_TABS.mac_partner;
   const isSheetTab = tabConfig.kind === 'sheet';
 
   const load = async () => {
@@ -51,17 +50,7 @@ const ResellerList = () => {
     setError('');
 
     try {
-      if (isSheetTab) {
-        const data = await getPartnerSheetRows(activeTab);
-        setRows(Array.isArray(data?.rows) ? data.rows : []);
-        setSheetMeta({
-          headers: Array.isArray(data?.headers) ? data.headers : [],
-          title: data?.title || tabConfig.label
-        });
-        return;
-      }
-
-      const data = await getResellers(search, { status: activeTab });
+      const data = await getResellers(search, { status: 'all', partner_type: activeTab });
       setRows(Array.isArray(data) ? data : []);
       setSheetMeta({ headers: [], title: '' });
     } catch (err) {
@@ -101,9 +90,9 @@ const ResellerList = () => {
     <div className="container-fluid py-3 reseller-page">
       <div className="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
         <div>
-          <h3 className="fw-bold text-dark m-0">Reseller Directory</h3>
+          <h3 className="fw-bold text-dark m-0">Partner Directory</h3>
           <div className="text-muted small">
-            {isSheetTab ? `${tabConfig.label} syncs from Google Sheets` : 'Database-backed reseller list'}
+            Partner-wise profile and account list
           </div>
         </div>
 
@@ -111,11 +100,11 @@ const ResellerList = () => {
           <input
             className="form-control"
             style={{ minWidth: 240 }}
-            placeholder={isSheetTab ? 'Search sheet rows' : 'Search by name, code, phone'}
+            placeholder="Search by name, code, phone"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !isSheetTab) {
+              if (e.key === 'Enter') {
                 load();
               }
             }}
@@ -124,12 +113,10 @@ const ResellerList = () => {
             <i className="fas fa-search me-1" />
             Search
           </button>
-          {!isSheetTab && (
-            <Link className="btn btn-success" to="/add-reseller">
-              <i className="fas fa-user-plus me-1" />
-              New Reseller
-            </Link>
-          )}
+          <Link className="btn btn-success" to={`/add-reseller?partner_type=${activeTab}`}>
+            <i className="fas fa-user-plus me-1" />
+            New Partner
+          </Link>
         </div>
       </div>
 
@@ -182,7 +169,11 @@ const ResellerList = () => {
                   ) : filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan="11" className="text-center text-muted py-4">
-                        {activeTab === 'inactive' ? 'No inactive resellers found' : 'No resellers found'}
+                        {activeTab === 'mac_partner'
+                          ? 'No Mac partner found'
+                          : activeTab === 'channel_partner'
+                            ? 'No Channel partner found'
+                            : 'No Distribution partner found'}
                       </td>
                     </tr>
                   ) : filteredRows.map((r) => (

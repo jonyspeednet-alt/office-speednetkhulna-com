@@ -13,8 +13,54 @@ const { fetchCsvSheet } = require('../services/googleSheetsService');
 let initPromise = null;
 let hasResellerJoiningDateColumn = false;
 let joiningDateColumnChecked = false;
+let hasResellerPartnerTypeColumn = false;
+let partnerTypeColumnChecked = false;
+let hasResellerOtcAppliedMonthColumn = false;
+let otcAppliedMonthColumnChecked = false;
 
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+const normalizePartnerType = (value) => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (['mac_partner', 'mac partner', 'mac'].includes(raw)) return 'mac_partner';
+  if (['distribution_partner', 'distribution partner', 'distribution'].includes(raw)) return 'distribution_partner';
+  if (['channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel'].includes(raw)) return 'channel_partner';
+  return '';
+};
+const normalizedPartnerTypeSql = (columnSql = "COALESCE(r.partner_type, '')") => `CASE
+  WHEN LOWER(${columnSql}) IN ('distribution_partner', 'distribution partner', 'distribution') THEN 'distribution_partner'
+  WHEN LOWER(${columnSql}) IN ('mac_partner', 'mac partner', 'mac') THEN 'mac_partner'
+  WHEN LOWER(${columnSql}) IN ('channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel') THEN 'channel_partner'
+  ELSE 'distribution_partner'
+END`;
+const getDhakaYmFromDate = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka',
+    year: 'numeric',
+    month: '2-digit'
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === 'year')?.value;
+  const month = parts.find((p) => p.type === 'month')?.value;
+  return year && month ? `${year}-${month}` : null;
+};
+const getOtcAppliedMonthYm = (reseller = {}) => {
+  const rawValue = reseller.otc_charge_applied_month;
+  if (rawValue instanceof Date) {
+    const ym = getDhakaYmFromDate(rawValue);
+    if (ym) return ym;
+  }
+  const raw = String(rawValue || '').trim();
+  if (/^\d{4}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 7);
+  const normalized = normalizeMonthYm(raw);
+  if (normalized) return normalized;
+  const parsedYm = getDhakaYmFromDate(raw);
+  if (parsedYm) return parsedYm;
+  const fallbackDate = parseYMD(reseller.joining_date || reseller.created_at);
+  if (!fallbackDate) return null;
+  return `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, '0')}`;
+};
 const isAdminRole = (user) => {
   const role = normalizeRole(user?.role_name || user?.role);
   return role === 'admin' || role === 'super admin' || role === 'superadmin';
@@ -257,7 +303,7 @@ const calculateResellerMonthProjectedTotal = (reseller = {}, targetMonthStr = ge
   const recurringTotal = getResellerRecurringMonthlyTotal(reseller);
   const activeDays = info.ym === createdYM ? Math.max(0, info.daysInMonth - created.getDate() + 1) : info.daysInMonth;
   const proratedRecurring = info.daysInMonth > 0 ? (recurringTotal / info.daysInMonth) * activeDays : 0;
-  const otcCharge = info.ym === createdYM ? parseAmount(reseller.otc_charge, 0) : 0;
+  const otcCharge = info.ym === getOtcAppliedMonthYm(reseller) ? parseAmount(reseller.otc_charge, 0) : 0;
   return Math.round((proratedRecurring + otcCharge) * 100) / 100;
 };
 
@@ -275,6 +321,40 @@ const detectJoiningDateColumn = async () => {
     hasResellerJoiningDateColumn = false;
     joiningDateColumnChecked = true;
     console.warn('joining_date schema detect warning:', err.message);
+  }
+};
+
+const detectPartnerTypeColumn = async () => {
+  try {
+    const result = await pool.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'partner_type'
+       LIMIT 1`
+    );
+    hasResellerPartnerTypeColumn = result.rows.length > 0;
+    partnerTypeColumnChecked = true;
+  } catch (err) {
+    hasResellerPartnerTypeColumn = false;
+    partnerTypeColumnChecked = true;
+    console.warn('partner_type schema detect warning:', err.message);
+  }
+};
+
+const detectOtcAppliedMonthColumn = async () => {
+  try {
+    const result = await pool.query(
+      `SELECT 1
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'otc_charge_applied_month'
+       LIMIT 1`
+    );
+    hasResellerOtcAppliedMonthColumn = result.rows.length > 0;
+    otcAppliedMonthColumnChecked = true;
+  } catch (err) {
+    hasResellerOtcAppliedMonthColumn = false;
+    otcAppliedMonthColumnChecked = true;
+    console.warn('otc_charge_applied_month schema detect warning:', err.message);
   }
 };
 
@@ -329,6 +409,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
               COALESCE(rate_bcdn,0)::numeric AS rate_bcdn,
               COALESCE(rate_nttn,0)::numeric AS rate_nttn,
               COALESCE(otc_charge,0)::numeric AS otc_charge,
+              ${hasResellerOtcAppliedMonthColumn ? `otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
               COALESCE(real_ip_count,0)::int AS real_ip_count,
               COALESCE(real_ip_price,0)::numeric AS real_ip_price
        FROM resellers WHERE id = $1`,
@@ -502,7 +583,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
   }
 
   const otcCharge = parseAmount(reseller.otc_charge, 0);
-  if (otcCharge > 0 && info.ym === createdYM) {
+  if (otcCharge > 0 && info.ym === getOtcAppliedMonthYm(reseller)) {
     grandTotal += otcCharge;
     items.push({
       desc: 'OTC',
@@ -510,7 +591,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
       rate: otcCharge,
       days: 1,
       total: Math.round(otcCharge * 100) / 100,
-      date_range: fmtDayMon(created),
+      date_range: fmtDayMon(info.monthStart),
       change_type: 'standard'
     });
   }
@@ -724,6 +805,12 @@ const initialize = async () => {
       if (!joiningDateColumnChecked) {
         await detectJoiningDateColumn();
       }
+      if (!partnerTypeColumnChecked) {
+        await detectPartnerTypeColumn();
+      }
+      if (!otcAppliedMonthColumnChecked) {
+        await detectOtcAppliedMonthColumn();
+      }
       try {
         await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS joining_date DATE`);
       } catch (err) {
@@ -733,10 +820,28 @@ const initialize = async () => {
         await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS otc_charge NUMERIC(12,2) NOT NULL DEFAULT 0`);
         await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS real_ip_count INTEGER NOT NULL DEFAULT 0`);
         await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS real_ip_price NUMERIC(12,2) NOT NULL DEFAULT 0`);
+        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS otc_charge_applied_month DATE`);
+        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS partner_type VARCHAR(40) NOT NULL DEFAULT 'distribution_partner'`);
+        await pool.query(
+          `UPDATE resellers
+           SET otc_charge_applied_month = DATE_TRUNC('month', COALESCE(joining_date, created_at))::date
+           WHERE otc_charge_applied_month IS NULL AND COALESCE(otc_charge,0) > 0`
+        );
+        await pool.query(
+          `UPDATE resellers
+           SET partner_type = CASE
+             WHEN LOWER(COALESCE(partner_type, '')) IN ('distribution_partner', 'distribution partner', 'distribution') THEN 'distribution_partner'
+             WHEN LOWER(COALESCE(partner_type, '')) IN ('mac_partner', 'mac partner', 'mac') THEN 'mac_partner'
+             WHEN LOWER(COALESCE(partner_type, '')) IN ('channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel') THEN 'distribution_partner'
+             ELSE 'distribution_partner'
+           END`
+        );
       } catch (err) {
-        console.warn('resellers otc/real_ip init warning:', err.message);
+        console.warn('resellers otc/real_ip/partner_type init warning:', err.message);
       }
       await detectJoiningDateColumn();
+      await detectPartnerTypeColumn();
+      await detectOtcAppliedMonthColumn();
       try {
         await syncSidebarMenus();
       } catch (err) {
@@ -849,7 +954,9 @@ const listResellers = async (req, res) => {
   try {
     await initialize();
     const canViewFinancials = canViewResellerFinancials(req.user);
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
     const search = (req.query.search || '').trim();
+    const partnerTypeFilter = normalizePartnerType(req.query.partner_type || '');
     const rawStatus = String(req.query.status || 'active').trim().toLowerCase();
     const statusFilter = ['active', 'inactive', 'suspended', 'all'].includes(rawStatus) ? rawStatus : 'active';
     const params = [];
@@ -864,6 +971,10 @@ const listResellers = async (req, res) => {
       params.push(statusFilter);
       whereParts.push(`LOWER(COALESCE(r.status, 'active')) = $${params.length}`);
     }
+    if (partnerTypeFilter) {
+      params.push(partnerTypeFilter);
+      whereParts.push(`(${hasPartnerTypeColumn ? normalizedPartnerTypeSql() : "'distribution_partner'"}) = $${params.length}`);
+    }
 
     const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
 
@@ -876,6 +987,7 @@ const listResellers = async (req, res) => {
         r.contact_no AS phone,
         r.pop_location,
         r.pop_location AS ip_address,
+        ${hasPartnerTypeColumn ? `${normalizedPartnerTypeSql()} AS partner_type,` : `'distribution_partner' AS partner_type,`}
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
         COALESCE(r.ggc_bw,0)::numeric AS ggc_bw,
@@ -923,6 +1035,8 @@ const createReseller = async (req, res) => {
   const client = await pool.connect();
   try {
     await initialize();
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
+    const hasOtcAppliedMonthColumn = await detectOtcAppliedMonthColumn().then(() => hasResellerOtcAppliedMonthColumn);
 
     const {
       reseller_name,
@@ -962,7 +1076,8 @@ const createReseller = async (req, res) => {
       initial_payment,
       status,
       due_amount,
-      next_pay_date
+      next_pay_date,
+      partner_type
     } = req.body || {};
 
     const resellerName = String(reseller_name || name || '').trim();
@@ -975,8 +1090,10 @@ const createReseller = async (req, res) => {
     const companyName = String(company_name || resellerName).trim();
     const rawResellerPassword = String(req.body?.password || contact_no || phone || finalUserId || '123456').trim() || '123456';
     const resellerPassword = await bcrypt.hash(rawResellerPassword, 10);
+    const normalizedPartnerType = normalizePartnerType(partner_type) || 'distribution_partner';
 
     const joinDate = String(joining_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const otcAppliedMonth = `${getDhakaMonthYm()}-01`;
     const bw = {
       iig_bw: parseAmount(iig_bw, 0),
       bdix_bw: parseAmount(bdix_bw, 0),
@@ -1004,6 +1121,7 @@ const createReseller = async (req, res) => {
       ...rate,
       joining_date: joinDate,
       otc_charge: otcCharge,
+      otc_charge_applied_month: otcAppliedMonth,
       real_ip_count: realIpCount,
       real_ip_price: realIpPrice
     });
@@ -1017,70 +1135,130 @@ const createReseller = async (req, res) => {
 
     await client.query('BEGIN');
 
+    const insertValuesBase = [
+      finalUserId,
+      resellerName,
+      companyName,
+      pop_location || ip_address || null,
+      contact_no || phone || null,
+      bw.iig_bw,
+      bw.bdix_bw,
+      bw.ggc_bw,
+      bw.fna_bw,
+      bw.cdn_bw,
+      bw.bcdn_bw,
+      bw.nttn_capacity,
+      nttnTypeText || null,
+      nttn_link || null,
+      connectionTypeText || null,
+      latitude || null,
+      longitude || null,
+      rate.rate_iig,
+      rate.rate_bdix,
+      rate.rate_ggc,
+      rate.rate_fna,
+      rate.rate_cdn,
+      rate.rate_bcdn,
+      rate.rate_nttn,
+      Math.round(projectedBill * 100) / 100,
+      parseAmount(due_amount, 0),
+      next_pay_date || null,
+      String(status || 'active').toLowerCase(),
+      parseAmount(security_deposit, 0),
+      otcCharge,
+      realIpCount,
+      realIpPrice
+    ];
+
     const ins = await client.query(
       hasResellerJoiningDateColumn
-        ? `INSERT INTO resellers (
-            user_id, reseller_name, company_name, pop_location, contact_no,
-            iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
-            nttn_type, nttn_link, connection_type, latitude, longitude,
-            rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
-            current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, password, joining_date, created_at, last_activity_date
-          ) VALUES (
-            $1,$2,$3,$4,$5,
-            $6,$7,$8,$9,$10,$11,$12,
-            $13,$14,$15,$16,$17,
-            $18,$19,$20,$21,$22,$23,$24,
-            $25,$26,$27,$28,$29,$30,$31,$32,$33,$34::date,NOW(),NOW()
-          ) RETURNING id`
-        : `INSERT INTO resellers (
-            user_id, reseller_name, company_name, pop_location, contact_no,
-            iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
-            nttn_type, nttn_link, connection_type, latitude, longitude,
-            rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
-            current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, password, created_at, last_activity_date
-          ) VALUES (
-            $1,$2,$3,$4,$5,
-            $6,$7,$8,$9,$10,$11,$12,
-            $13,$14,$15,$16,$17,
-            $18,$19,$20,$21,$22,$23,$24,
-            $25,$26,$27,$28,$29,$30,$31,$32,$33,$34::timestamp,NOW()
-          ) RETURNING id`,
-      [
-        finalUserId,
-        resellerName,
-        companyName,
-        pop_location || ip_address || null,
-        contact_no || phone || null,
-        bw.iig_bw,
-        bw.bdix_bw,
-        bw.ggc_bw,
-        bw.fna_bw,
-        bw.cdn_bw,
-        bw.bcdn_bw,
-        bw.nttn_capacity,
-        nttnTypeText || null,
-        nttn_link || null,
-        connectionTypeText || null,
-        latitude || null,
-        longitude || null,
-        rate.rate_iig,
-        rate.rate_bdix,
-        rate.rate_ggc,
-        rate.rate_fna,
-        rate.rate_cdn,
-        rate.rate_bcdn,
-        rate.rate_nttn,
-        Math.round(projectedBill * 100) / 100,
-        parseAmount(due_amount, 0),
-        next_pay_date || null,
-        String(status || 'active').toLowerCase(),
-        parseAmount(security_deposit, 0),
-        otcCharge,
-        realIpCount,
-        realIpPrice,
-        resellerPassword,
-        joinDate
-      ]
+        ? hasPartnerTypeColumn && hasOtcAppliedMonthColumn
+          ? `INSERT INTO resellers (
+              user_id, reseller_name, company_name, pop_location, contact_no,
+              iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
+              nttn_type, nttn_link, connection_type, latitude, longitude,
+              rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+              current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, otc_charge_applied_month, partner_type, password, joining_date, created_at, last_activity_date
+            ) VALUES (
+              $1,$2,$3,$4,$5,
+              $6,$7,$8,$9,$10,$11,$12,
+              $13,$14,$15,$16,$17,
+              $18,$19,$20,$21,$22,$23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,$33::date,$34,$35,$36::date,NOW(),NOW()
+            ) RETURNING id`
+          : hasPartnerTypeColumn
+            ? `INSERT INTO resellers (
+                user_id, reseller_name, company_name, pop_location, contact_no,
+                iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
+                nttn_type, nttn_link, connection_type, latitude, longitude,
+                rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+                current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, partner_type, password, joining_date, created_at, last_activity_date
+              ) VALUES (
+                $1,$2,$3,$4,$5,
+                $6,$7,$8,$9,$10,$11,$12,
+                $13,$14,$15,$16,$17,
+                $18,$19,$20,$21,$22,$23,$24,
+                $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35::date,NOW(),NOW()
+              ) RETURNING id`
+          : `INSERT INTO resellers (
+              user_id, reseller_name, company_name, pop_location, contact_no,
+              iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
+              nttn_type, nttn_link, connection_type, latitude, longitude,
+              rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+              current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, password, joining_date, created_at, last_activity_date
+            ) VALUES (
+              $1,$2,$3,$4,$5,
+              $6,$7,$8,$9,$10,$11,$12,
+              $13,$14,$15,$16,$17,
+              $18,$19,$20,$21,$22,$23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,$33,$34::date,NOW(),NOW()
+            ) RETURNING id`
+        : hasPartnerTypeColumn && hasOtcAppliedMonthColumn
+          ? `INSERT INTO resellers (
+              user_id, reseller_name, company_name, pop_location, contact_no,
+              iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
+              nttn_type, nttn_link, connection_type, latitude, longitude,
+              rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+              current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, otc_charge_applied_month, partner_type, password, created_at, last_activity_date
+            ) VALUES (
+              $1,$2,$3,$4,$5,
+              $6,$7,$8,$9,$10,$11,$12,
+              $13,$14,$15,$16,$17,
+              $18,$19,$20,$21,$22,$23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,$33::date,$34,$35,$36::timestamp,NOW()
+            ) RETURNING id`
+        : hasPartnerTypeColumn
+          ? `INSERT INTO resellers (
+              user_id, reseller_name, company_name, pop_location, contact_no,
+              iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
+              nttn_type, nttn_link, connection_type, latitude, longitude,
+              rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+              current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, partner_type, password, created_at, last_activity_date
+            ) VALUES (
+              $1,$2,$3,$4,$5,
+              $6,$7,$8,$9,$10,$11,$12,
+              $13,$14,$15,$16,$17,
+              $18,$19,$20,$21,$22,$23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35::timestamp,NOW()
+            ) RETURNING id`
+          : `INSERT INTO resellers (
+              user_id, reseller_name, company_name, pop_location, contact_no,
+              iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
+              nttn_type, nttn_link, connection_type, latitude, longitude,
+              rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+              current_projected_bill, previous_month_due, next_pay_date, status, security_deposit, otc_charge, real_ip_count, real_ip_price, password, created_at, last_activity_date
+            ) VALUES (
+              $1,$2,$3,$4,$5,
+              $6,$7,$8,$9,$10,$11,$12,
+              $13,$14,$15,$16,$17,
+              $18,$19,$20,$21,$22,$23,$24,
+              $25,$26,$27,$28,$29,$30,$31,$32,$33,$34::timestamp,NOW()
+            ) RETURNING id`,
+      hasPartnerTypeColumn && hasOtcAppliedMonthColumn
+        ? [...insertValuesBase, otcAppliedMonth, normalizedPartnerType, resellerPassword, joinDate]
+        : hasPartnerTypeColumn
+          ? [...insertValuesBase, normalizedPartnerType, resellerPassword, joinDate]
+          : [...insertValuesBase, resellerPassword, joinDate]
     );
 
     const newResellerId = ins.rows[0].id;
@@ -1227,6 +1405,7 @@ const getResellerProfile = async (req, res) => {
 const getResellerProfileDetails = async (req, res) => {
   try {
     await initialize();
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
     const { id } = req.params;
     const perms = req.user?.permissions || {};
     const isAdmin = isAdminRole(req.user) || !!perms.all_access;
@@ -1252,6 +1431,7 @@ const getResellerProfileDetails = async (req, res) => {
         r.pop_location,
         r.latitude,
         r.longitude,
+        ${hasPartnerTypeColumn ? `${normalizedPartnerTypeSql()} AS partner_type,` : `'distribution_partner' AS partner_type,`}
         COALESCE(r.status, 'active') AS status,
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
@@ -1274,6 +1454,7 @@ const getResellerProfileDetails = async (req, res) => {
         COALESCE(r.current_projected_bill,0)::numeric AS current_projected_bill,
         COALESCE(r.security_deposit,0)::numeric AS security_deposit,
         COALESCE(r.otc_charge,0)::numeric AS otc_charge,
+        ${hasResellerOtcAppliedMonthColumn ? `r.otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(r.real_ip_count,0)::int AS real_ip_count,
         COALESCE(r.real_ip_price,0)::numeric AS real_ip_price,
         r.next_pay_date,
@@ -1595,6 +1776,8 @@ const getResellerProfileDetails = async (req, res) => {
 const updateReseller = async (req, res) => {
   try {
     await initialize();
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
+    await detectOtcAppliedMonthColumn();
     const { id } = req.params;
     const {
       name,
@@ -1630,7 +1813,8 @@ const updateReseller = async (req, res) => {
       security_deposit,
       otc_charge,
       real_ip_count,
-      real_ip_price
+      real_ip_price,
+      partner_type
     } = req.body;
     const newPasswordRaw = String(req.body?.password || '').trim();
     const newHashedPassword = newPasswordRaw ? await bcrypt.hash(newPasswordRaw, 10) : null;
@@ -1640,7 +1824,32 @@ const updateReseller = async (req, res) => {
     const normalizedStatus = String(status || '').trim().toLowerCase();
     const hasExplicitStatus = normalizedStatus.length > 0;
     const shouldZeroProjectedBill = hasExplicitStatus && normalizedStatus !== 'active';
-    const shouldRefreshProjectedBill = normalizedStatus === 'active';
+    const hasExplicitPartnerType = req.body.partner_type !== undefined;
+    const hasExplicitOtcCharge = req.body.otc_charge !== undefined;
+    const hasBillingImpactingChange = [
+      'iig_bw',
+      'bdix_bw',
+      'ggc_bw',
+      'fna_bw',
+      'cdn_bw',
+      'bcdn_bw',
+      'nttn_capacity',
+      'rate_iig',
+      'rate_bdix',
+      'rate_ggc',
+      'rate_fna',
+      'rate_cdn',
+      'rate_bcdn',
+      'rate_nttn',
+      'joining_date',
+      'real_ip_count',
+      'real_ip_price',
+      'otc_charge',
+      'status'
+    ].some((key) => req.body[key] !== undefined);
+    const shouldRefreshProjectedBill =
+      hasBillingImpactingChange && normalizedStatus !== 'inactive' && normalizedStatus !== 'suspended';
+    const normalizedPartnerType = normalizePartnerType(partner_type);
 
     const beforeResult = await pool.query(
       `SELECT id,
@@ -1812,12 +2021,27 @@ const updateReseller = async (req, res) => {
 
     let after = result.rows[0];
 
+    if (hasResellerOtcAppliedMonthColumn && hasExplicitOtcCharge) {
+      await pool.query(
+        `UPDATE resellers
+         SET otc_charge_applied_month = $1
+         WHERE id = $2`,
+        [parseAmount(otc_charge, 0) > 0 ? `${getDhakaMonthYm()}-01` : null, id]
+      );
+    }
+
     if (shouldRefreshProjectedBill) {
       const refreshedProjected = await refreshProjectedBillForCurrentMonth(Number(id));
       after = {
         ...after,
         current_projected_bill: refreshedProjected
       };
+    }
+    if (hasPartnerTypeColumn && hasExplicitPartnerType && normalizedPartnerType) {
+      await pool.query(
+        `UPDATE resellers SET partner_type = $1 WHERE id = $2`,
+        [normalizedPartnerType, id]
+      );
     }
     const watchedFields = [
       'current_projected_bill',
@@ -3193,6 +3417,7 @@ const getInvoice = async (req, res) => {
         COALESCE(rate_bcdn,0)::numeric AS rate_bcdn,
         COALESCE(rate_nttn,0)::numeric AS rate_nttn,
         COALESCE(otc_charge,0)::numeric AS otc_charge,
+        ${hasResellerOtcAppliedMonthColumn ? `otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(real_ip_count,0)::int AS real_ip_count,
         COALESCE(real_ip_price,0)::numeric AS real_ip_price,
         COALESCE(status, 'active') AS status,
@@ -3500,6 +3725,7 @@ const getInvoiceByBillId = async (req, res) => {
         COALESCE(rate_bcdn,0)::numeric AS rate_bcdn,
         COALESCE(rate_nttn,0)::numeric AS rate_nttn,
         COALESCE(otc_charge,0)::numeric AS otc_charge,
+        ${hasResellerOtcAppliedMonthColumn ? `otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(real_ip_count,0)::int AS real_ip_count,
         COALESCE(real_ip_price,0)::numeric AS real_ip_price,
         COALESCE(status, 'active') AS status,

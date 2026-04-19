@@ -44,6 +44,12 @@ const getDhakaDateYmd = () => {
   const day = parts.find((p) => p.type === 'day')?.value;
   return year && month && day ? `${year}-${month}-${day}` : new Date().toISOString().slice(0, 10);
 };
+const partnerTypeLabel = (value) => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'mac_partner') return 'Mac Partner';
+  if (normalized === 'distribution_partner') return 'Distribution Partner';
+  return 'Channel Partner';
+};
 
 const ModalWrap = ({ title, children, onClose }) => (
   <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ zIndex: 1080, background: 'rgba(0,0,0,.5)' }}>
@@ -89,6 +95,7 @@ const ResellerProfile = () => {
       setEditForm({
         name: r.name || '', company_name: r.company_name || '', phone: r.phone || '', pop_location: r.pop_location || '',
         latitude: r.latitude || '', longitude: r.longitude || '', reseller_code: r.reseller_code || '', status: r.status || 'active',
+        partner_type: r.partner_type || 'distribution_partner',
         iig_bw: Number(r.iig_bw || 0), bdix_bw: Number(r.bdix_bw || 0), ggc_bw: Number(r.ggc_bw || 0), fna_bw: Number(r.fna_bw || 0),
         cdn_bw: Number(r.cdn_bw || 0), bcdn_bw: Number(r.bcdn_bw || 0), nttn_capacity: Number(r.nttn_capacity || 0),
         nttn_type: r.nttn_type || '', nttn_link: r.nttn_link || '', connection_type: r.connection_type || '',
@@ -267,6 +274,7 @@ const ResellerProfile = () => {
           <div>
             <h4 className="fw-bold m-0">{reseller.name}</h4>
             <small className="text-muted">{reseller.reseller_code}</small>
+            <span className="badge bg-light text-dark border ms-2">{partnerTypeLabel(reseller.partner_type)}</span>
           </div>
         </div>
         <div className="d-flex gap-2">
@@ -313,6 +321,7 @@ const ResellerProfile = () => {
               <li className="list-group-item px-0"><strong>লোকেশন:</strong> {reseller.pop_location || '-'}</li>
               {(reseller.latitude && reseller.longitude) ? <li className="list-group-item px-0"><strong>কো-অর্ডিনেট:</strong> <a href={`https://www.google.com/maps?q=${reseller.latitude},${reseller.longitude}`} target="_blank" rel="noreferrer" className="btn btn-xs btn-outline-primary py-0 px-2 rounded-pill ms-2">ম্যাপে দেখুন</a></li> : null}
               <li className="list-group-item px-0"><strong>ইউজার আইডি:</strong> {reseller.reseller_code || '-'}</li>
+              <li className="list-group-item px-0"><strong>Partner Type:</strong> {partnerTypeLabel(reseller.partner_type)}</li>
               {Number(reseller.security_deposit || 0) > 0 && <li className="list-group-item px-0"><strong>সিকিউরিটি ডিপোজিট:</strong> {money(reseller.security_deposit)}</li>}
               {can.can_view_financials && Number(reseller.otc_charge || 0) > 0 && <li className="list-group-item px-0"><strong>OTC Charge:</strong> {money(reseller.otc_charge)}</li>}
               <li className="list-group-item px-0"><strong>স্ট্যাটাস:</strong> <span className={`badge rounded-pill ${reseller.status === 'active' ? 'bg-success-subtle text-success-emphasis border border-success-subtle' : 'bg-danger-subtle text-danger-emphasis border border-danger-subtle'}`}>{reseller.status}</span></li>
@@ -514,6 +523,14 @@ const ResellerProfile = () => {
             <div className="col-md-4"><label className="form-label fw-semibold">পার্টনার নাম</label><input className="form-control" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required /></div>
             <div className="col-md-4"><label className="form-label fw-semibold">কোম্পানির নাম</label><input className="form-control" value={editForm.company_name} onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })} /></div>
             <div className="col-md-4"><label className="form-label fw-semibold">User ID</label><input className="form-control" value={editForm.reseller_code} onChange={(e) => setEditForm({ ...editForm, reseller_code: e.target.value })} /></div>
+            <div className="col-md-4">
+              <label className="form-label fw-semibold">Partner Type</label>
+              <select className="form-select" value={editForm.partner_type} onChange={(e) => setEditForm({ ...editForm, partner_type: e.target.value })}>
+                <option value="mac_partner">Mac Partner</option>
+                <option value="distribution_partner">Distribution Partner</option>
+                <option value="channel_partner">Channel Partner</option>
+              </select>
+            </div>
             <div className="col-md-4"><label className="form-label fw-semibold">কন্টাক্ট নাম্বার</label><input className="form-control" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} /></div>
             <div className="col-md-4"><label className="form-label fw-semibold">POP লোকেশন</label><input className="form-control" value={editForm.pop_location} onChange={(e) => setEditForm({ ...editForm, pop_location: e.target.value })} /></div>
             <div className="col-md-4"><label className="form-label fw-semibold">সিকিউরিটি ডিপোজিট</label><input type="number" className="form-control" value={editForm.security_deposit} onChange={(e) => setEditForm({ ...editForm, security_deposit: e.target.value })} /></div>
