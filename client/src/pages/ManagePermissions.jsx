@@ -1,3 +1,4 @@
+import Swal from 'sweetalert2';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getManagePermissionsData, updatePermission } from '../services/permissionService';
 import { getRoles, saveRole, deleteRole, assignRoleToUser } from '../services/roleService';
@@ -110,20 +111,28 @@ const ManagePermissions = () => {
   }, [users]);
 
   const handleRoleToggle = async (role, pk) => {
-    const updated = { ...(role.permissions||{}) };
+    const previous = { ...(role.permissions||{}) };
+    const updated = { ...previous };
     if (updated[pk]) delete updated[pk]; else updated[pk] = true;
+    // FIX: Optimistic update — update UI immediately before API call
+    setRoles(p => p.map(r => r.id === role.id ? { ...r, permissions: updated } : r));
     try {
       await saveRole({ ...role, permissions: updated });
-      setRoles(p => p.map(r => r.id === role.id ? { ...r, permissions: updated } : r));
       showMessage('info', `Updated "${role.name}"`);
-    } catch { showMessage('danger', 'Role update failed'); }
+    } catch (err) {
+      // Revert on failure
+      console.error('Role toggle error:', err);
+      setRoles(p => p.map(r => r.id === role.id ? { ...r, permissions: previous } : r));
+      showMessage('danger', 'Role update failed');
+    }
   };
 
   const handleOverrideToggle = async (uid, col, cur) => {
     const nv = cur ? 0 : 1;
     setActivePermissions(p => ({ ...p, [uid]: { ...(p[uid]||{}), [col]: nv===1 } }));
     try { await updatePermission(uid, col, nv); }
-    catch {
+    catch (err) {
+      console.error('Override error:', err);
       setActivePermissions(p => ({ ...p, [uid]: { ...(p[uid]||{}), [col]: cur } }));
       showMessage('danger', 'Override failed');
     }
@@ -134,7 +143,7 @@ const ManagePermissions = () => {
       await assignRoleToUser(uid, rid);
       setUsers(p => p.map(u => u.id === uid ? { ...u, role_id: rid ? Number(rid) : null } : u));
       showMessage('info', 'Role assigned');
-    } catch { showMessage('danger', 'Assign failed'); }
+    } catch (err) { console.error('Assign role error:', err); showMessage('danger', err.message || 'Assign failed'); }
   };
 
   const handleClearOverrides = async (uid) => {
@@ -143,8 +152,17 @@ const ManagePermissions = () => {
     if (!enabled.length) return;
     const snap = {...ex};
     setActivePermissions(p => ({ ...p, [uid]: Object.fromEntries(Object.keys(ex).map(k=>[k,false])) }));
-    try { await Promise.all(enabled.map(pk => updatePermission(uid, pk, 0))); showMessage('info', 'Overrides cleared'); }
-    catch { setActivePermissions(p => ({ ...p, [uid]: snap })); showMessage('danger', 'Clear failed'); }
+    // FIX: Promise.allSettled so partial failures don't rollback everything
+    const results = await Promise.allSettled(enabled.map(pk => updatePermission(uid, pk, 0)));
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) {
+      const failedKeys = enabled.filter((_, i) => results[i].status === 'rejected');
+      const restore = Object.fromEntries(failedKeys.map(k => [k, snap[k]]));
+      setActivePermissions(p => ({ ...p, [uid]: { ...p[uid], ...restore } }));
+      showMessage('danger', `${failed} override(s) failed to clear`);
+    } else {
+      showMessage('info', 'All overrides cleared');
+    }
   };
 
   const handleCreateRole = async (e) => {
@@ -153,23 +171,35 @@ const ManagePermissions = () => {
     setSavingRole(true);
     try {
       const res = await saveRole({ name: newRoleName.trim(), permissions: {} });
-      const nr = res?.role || { id: Date.now(), name: newRoleName.trim(), permissions: {} };
+      // FIX: Do NOT use a fake Date.now() ID — if backend didn't return role, throw an error
+      if (!res?.role) throw new Error('Server did not return the created role');
+      const nr = res.role;
       setRoles(p => [...p, nr]);
       setNewRoleName(''); setShowRoleModal(false);
       showMessage('info', `Role "${nr.name}" created`);
-    } catch { showMessage('danger', 'Create failed'); }
+    } catch (err) { console.error('Create role error:', err); showMessage('danger', err.message || 'Create failed'); }
     finally { setSavingRole(false); }
   };
 
   const handleDeleteRole = async (role) => {
     const uc = roleUserCount[role.id]||0;
     if (uc > 0) { showMessage('danger', `Cannot delete "${role.name}" — ${uc} user(s) assigned`); return; }
-    if (!window.confirm(`Delete role "${role.name}"?`)) return;
+    const confirmed = await Swal.fire({
+      title: `Delete role "${role.name}"?`,
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel',
+    });
+    if (!confirmed.isConfirmed) return;
     try {
       await deleteRole(role.id);
       setRoles(p => p.filter(r => r.id !== role.id));
       showMessage('info', `"${role.name}" deleted`);
-    } catch { showMessage('danger', 'Delete failed'); }
+    } catch (err) { console.error('Delete role error:', err); showMessage('danger', err.message || 'Delete failed'); }
   };
 
   if (loading) return (
