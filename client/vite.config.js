@@ -25,13 +25,15 @@ export default defineConfig({
   appType: 'spa',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // FIX: sourcemap disabled in production to prevent source code exposure
+    sourcemap: false,
     minify: 'terser',
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query'],
-          calendar: ['@fullcalendar/react', '@fullcalendar/daygrid'],
+          // FIX: added @fullcalendar/timegrid and @fullcalendar/interaction to calendar chunk
+          calendar: ['@fullcalendar/react', '@fullcalendar/daygrid', '@fullcalendar/timegrid', '@fullcalendar/interaction'],
           utils: ['axios', 'moment', 'html2canvas']
         }
       }
