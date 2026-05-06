@@ -11,6 +11,13 @@ const PARTNER_TABS = {
 const bw = (val) => `${Number(val || 0)} Mbps`;
 
 const normalize = (value) => String(value ?? '').toLowerCase();
+const normalizePartnerType = (value) => {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (['mac_partner', 'mac partner', 'mac'].includes(raw)) return 'mac_partner';
+  if (['channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel'].includes(raw)) return 'channel_partner';
+  if (['distribution_partner', 'distribution partner', 'distribution'].includes(raw)) return 'distribution_partner';
+  return 'distribution_partner';
+};
 
 const getRowText = (row) => Object.values(row || {})
   .filter((value) => value !== null && value !== undefined)
@@ -82,7 +89,7 @@ const ResellerList = () => {
         if (!term) return true;
         return getRowText(row).includes(term);
       })
-    : rows;
+    : rows.filter((row) => normalizePartnerType(row?.partner_type) === activeTab);
 
   const visibleSheetColumns = isSheetTab ? getVisibleSheetColumns(sheetMeta.headers, filteredRows) : [];
 

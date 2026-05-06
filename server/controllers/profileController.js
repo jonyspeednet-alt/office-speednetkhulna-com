@@ -1,4 +1,5 @@
 const pool = require('../utilities/db');
+const { resolvePermission } = require('../utilities/permissionRegistry');
 
 /**
  * Helper: Calculate actual leave days excluding the weekly off-day.
@@ -32,7 +33,9 @@ const getUserProfile = async (req, res) => {
   try {
     // Determine target user ID: provided in params or from auth token
     let targetUserId = req.params.id ? parseInt(req.params.id) : req.user.id;
-    
+    const currentUserId = req.user.id;
+    const isOwnProfile = targetUserId === currentUserId;
+
     // 1. Fetch User Details
     const userQuery = 'SELECT * FROM users WHERE id = $1';
     const userResult = await pool.query(userQuery, [targetUserId]);
@@ -44,11 +47,20 @@ const getUserProfile = async (req, res) => {
     const user = userResult.rows[0];
     delete user.password; // Security: remove password hash
 
+    // Mask employee_id if viewer doesn't have permission.
+    // Visible (blurred or clear) to: own profile, users with 'users.edit.any' OR 'p_employees' permission.
+    const canSeeId = isOwnProfile ||
+      resolvePermission(req.user, 'users.edit.any') ||
+      resolvePermission(req.user, 'p_employees');
+    if (!canSeeId) {
+      user.employee_id = null;
+    }
+
     // 2. Filter Parameters for Leaves
     const { month, year } = req.query;
     const currentYear = new Date().getFullYear();
     const filterYear = year || currentYear;
-    
+
     // 3. Fetch Leave History
     let leaveQuery = `
       SELECT lr.*, lt.name as type_name 
@@ -64,7 +76,7 @@ const getUserProfile = async (req, res) => {
       leaveQuery += ` AND EXTRACT(MONTH FROM lr.start_date) = $${paramCount}`;
       queryParams.push(month);
     }
-    
+
     if (filterYear) {
       paramCount++;
       leaveQuery += ` AND EXTRACT(YEAR FROM lr.start_date) = $${paramCount}`;

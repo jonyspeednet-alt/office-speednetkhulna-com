@@ -1,14 +1,14 @@
-const pool = require('../utilities/db');
-const bcrypt = require('bcrypt');
-const nodemailer = require('nodemailer');
-const { resolvePermission } = require('../utilities/permissionRegistry');
+const pool = require("../utilities/db");
+const bcrypt = require("bcrypt");
+const nodemailer = require("nodemailer");
+const { resolvePermission } = require("../utilities/permissionRegistry");
 const {
   initResellerFinancialAuditTable,
   logResellerFinancialChange,
   getActor,
   getReqMeta,
-} = require('../utilities/resellerFinancialAudit');
-const { fetchCsvSheet } = require('../services/googleSheetsService');
+} = require("../utilities/resellerFinancialAudit");
+const { fetchCsvSheet } = require("../services/googleSheetsService");
 
 let initPromise = null;
 let hasResellerJoiningDateColumn = false;
@@ -18,15 +18,37 @@ let partnerTypeColumnChecked = false;
 let hasResellerOtcAppliedMonthColumn = false;
 let otcAppliedMonthColumnChecked = false;
 
-const normalizeRole = (role) => String(role || '').trim().toLowerCase();
+const normalizeRole = (role) =>
+  String(role || "")
+    .trim()
+    .toLowerCase();
 const normalizePartnerType = (value) => {
-  const raw = String(value || '').trim().toLowerCase();
-  if (['mac_partner', 'mac partner', 'mac'].includes(raw)) return 'mac_partner';
-  if (['distribution_partner', 'distribution partner', 'distribution'].includes(raw)) return 'distribution_partner';
-  if (['channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel'].includes(raw)) return 'channel_partner';
-  return '';
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (["mac_partner", "mac partner", "mac"].includes(raw)) return "mac_partner";
+  if (
+    ["distribution_partner", "distribution partner", "distribution"].includes(
+      raw,
+    )
+  )
+    return "distribution_partner";
+  if (
+    [
+      "channel_partner",
+      "channel partner",
+      "chanel_partner",
+      "chanel partner",
+      "channel",
+      "chanel",
+    ].includes(raw)
+  )
+    return "channel_partner";
+  return "";
 };
-const normalizedPartnerTypeSql = (columnSql = "COALESCE(r.partner_type, '')") => `CASE
+const normalizedPartnerTypeSql = (
+  columnSql = "COALESCE(r.partner_type, '')",
+) => `CASE
   WHEN LOWER(${columnSql}) IN ('distribution_partner', 'distribution partner', 'distribution') THEN 'distribution_partner'
   WHEN LOWER(${columnSql}) IN ('mac_partner', 'mac partner', 'mac') THEN 'mac_partner'
   WHEN LOWER(${columnSql}) IN ('channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel') THEN 'channel_partner'
@@ -35,13 +57,13 @@ END`;
 const getDhakaYmFromDate = (value) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit'
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
   }).formatToParts(date);
-  const year = parts.find((p) => p.type === 'year')?.value;
-  const month = parts.find((p) => p.type === 'month')?.value;
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
   return year && month ? `${year}-${month}` : null;
 };
 const getOtcAppliedMonthYm = (reseller = {}) => {
@@ -50,7 +72,7 @@ const getOtcAppliedMonthYm = (reseller = {}) => {
     const ym = getDhakaYmFromDate(rawValue);
     if (ym) return ym;
   }
-  const raw = String(rawValue || '').trim();
+  const raw = String(rawValue || "").trim();
   if (/^\d{4}-\d{2}$/.test(raw)) return raw;
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw.slice(0, 7);
   const normalized = normalizeMonthYm(raw);
@@ -59,55 +81,60 @@ const getOtcAppliedMonthYm = (reseller = {}) => {
   if (parsedYm) return parsedYm;
   const fallbackDate = parseYMD(reseller.joining_date || reseller.created_at);
   if (!fallbackDate) return null;
-  return `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, '0')}`;
+  return `${fallbackDate.getFullYear()}-${String(fallbackDate.getMonth() + 1).padStart(2, "0")}`;
 };
 const isAdminRole = (user) => {
   const role = normalizeRole(user?.role_name || user?.role);
-  return role === 'admin' || role === 'super admin' || role === 'superadmin';
+  return role === "admin" || role === "super admin" || role === "superadmin";
 };
-const hasAnyPermission = (user, keys = []) => keys.some((k) => resolvePermission(user, k));
+const hasAnyPermission = (user, keys = []) =>
+  keys.some((k) => resolvePermission(user, k));
 const canViewResellerFinancials = (user) =>
   isAdminRole(user) ||
   hasAnyPermission(user, [
-    'billing.logs.view',
-    'billing.monthly_summary.view',
-    'billing.generate_bill',
-    'billing.invoice.view',
-    'billing.invoice.static_view'
+    "billing.logs.view",
+    "billing.monthly_summary.view",
+    "billing.generate_bill",
+    "billing.invoice.view",
+    "billing.invoice.static_view",
   ]);
 
 const PARTNER_SHEET_CONFIG = {
   mac_partner: {
-    title: 'Mac Partner',
-    envKey: 'GOOGLE_SHEETS_MAC_PARTNER_CSV_URL'
+    title: "Mac Partner",
+    envKey: "GOOGLE_SHEETS_MAC_PARTNER_CSV_URL",
   },
   distribution_partner: {
-    title: 'Distribution Partner',
-    envKey: 'GOOGLE_SHEETS_DISTRIBUTION_PARTNER_CSV_URL'
-  }
+    title: "Distribution Partner",
+    envKey: "GOOGLE_SHEETS_DISTRIBUTION_PARTNER_CSV_URL",
+  },
 };
-const GOOGLE_SHEETS_WEBHOOK_TOKEN = String(process.env.GOOGLE_SHEETS_WEBHOOK_TOKEN || '').trim();
+const GOOGLE_SHEETS_WEBHOOK_TOKEN = String(
+  process.env.GOOGLE_SHEETS_WEBHOOK_TOKEN || "",
+).trim();
 
 const normalizeBwType = (raw) => {
-  const val = String(raw || '').toLowerCase().trim();
+  const val = String(raw || "")
+    .toLowerCase()
+    .trim();
   const map = {
-    iig: 'iig_bw',
-    iig_bw: 'iig_bw',
-    bdix: 'bdix_bw',
-    bdix_bw: 'bdix_bw',
-    ggc: 'ggc_bw',
-    ggc_bw: 'ggc_bw',
-    fna: 'fna_bw',
-    fna_bw: 'fna_bw',
-    cdn: 'cdn_bw',
-    cdn_bw: 'cdn_bw',
-    bcdn: 'bcdn_bw',
-    bcdn_bw: 'bcdn_bw',
-    other: 'bcdn_bw',
-    nttn: 'nttn_capacity',
-    nttn_capacity: 'nttn_capacity'
+    iig: "iig_bw",
+    iig_bw: "iig_bw",
+    bdix: "bdix_bw",
+    bdix_bw: "bdix_bw",
+    ggc: "ggc_bw",
+    ggc_bw: "ggc_bw",
+    fna: "fna_bw",
+    fna_bw: "fna_bw",
+    cdn: "cdn_bw",
+    cdn_bw: "cdn_bw",
+    bcdn: "bcdn_bw",
+    bcdn_bw: "bcdn_bw",
+    other: "bcdn_bw",
+    nttn: "nttn_capacity",
+    nttn_capacity: "nttn_capacity",
   };
-  return map[val] || 'iig_bw';
+  return map[val] || "iig_bw";
 };
 
 const parseAmount = (v, d = 0) => {
@@ -118,43 +145,61 @@ const parseWholeNumber = (v, d = 0) => {
   const n = Math.trunc(parseAmount(v, d));
   return Number.isFinite(n) ? n : d;
 };
-const parseBillDetailsSnapshot = (raw, context = '') => {
+const parseBillDetailsSnapshot = (raw, context = "") => {
   if (raw == null) return { items: [], valid: false };
   try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!Array.isArray(parsed)) {
-      if (context) console.warn(`[InvoiceSnapshot] non-array bill_details (${context})`);
+      if (context)
+        console.warn(`[InvoiceSnapshot] non-array bill_details (${context})`);
       return { items: [], valid: false };
     }
     const items = parsed
-      .filter((item) => item && typeof item === 'object')
+      .filter((item) => item && typeof item === "object")
       .map((item) => ({
         ...item,
         total: parseAmount(item.total, 0),
         bw: parseAmount(item.bw, 0),
         rate: parseAmount(item.rate, 0),
-        days: parseAmount(item.days, 0)
+        days: parseAmount(item.days, 0),
       }));
     return { items, valid: true };
   } catch (error) {
-    if (context) console.warn(`[InvoiceSnapshot] invalid JSON bill_details (${context}): ${error.message}`);
+    if (context)
+      console.warn(
+        `[InvoiceSnapshot] invalid JSON bill_details (${context}): ${error.message}`,
+      );
     return { items: [], valid: false };
   }
 };
 
-const MANUAL_BILLING_DISABLED = String(process.env.MANUAL_BILLING_DISABLED ?? 'true').toLowerCase() === 'true';
-const INTERNAL_AUTOMATION_TOKEN = String(process.env.INTERNAL_AUTOMATION_TOKEN || '').trim();
-const AUTO_FINALIZE_DEFAULT_BATCH = Math.max(Number.parseInt(process.env.AUTO_FINALIZE_BATCH_SIZE || '200', 10) || 200, 1);
+const MANUAL_BILLING_DISABLED =
+  String(process.env.MANUAL_BILLING_DISABLED ?? "true").toLowerCase() ===
+  "true";
+const INTERNAL_AUTOMATION_TOKEN = String(
+  process.env.INTERNAL_AUTOMATION_TOKEN || "",
+).trim();
+const AUTO_FINALIZE_DEFAULT_BATCH = Math.max(
+  Number.parseInt(process.env.AUTO_FINALIZE_BATCH_SIZE || "200", 10) || 200,
+  1,
+);
 const monthlySummaryCache = new Map();
-const isProdEnv = String(process.env.APP_ENV || process.env.NODE_ENV || '').toLowerCase() === 'production';
+const isProdEnv =
+  String(process.env.APP_ENV || process.env.NODE_ENV || "").toLowerCase() ===
+  "production";
 const MONTHLY_SUMMARY_CACHE_TTL_MS = Math.max(
-  Number.parseInt(process.env.MONTHLY_SUMMARY_CACHE_TTL_MS || (isProdEnv ? '120000' : '30000'), 10) || (isProdEnv ? 120000 : 30000),
-  5000
+  Number.parseInt(
+    process.env.MONTHLY_SUMMARY_CACHE_TTL_MS ||
+      (isProdEnv ? "120000" : "30000"),
+    10,
+  ) || (isProdEnv ? 120000 : 30000),
+  5000,
 );
 
-const cacheKeyMonthlySummary = (month) => `monthly_summary:${String(month || '').slice(0, 7)}`;
+const cacheKeyMonthlySummary = (month) =>
+  `monthly_summary:${String(month || "").slice(0, 7)}`;
 const extractYm = (v) => {
-  const s = String(v || '').trim();
+  const s = String(v || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})/);
   return m ? `${m[1]}-${m[2]}` : null;
 };
@@ -172,7 +217,7 @@ const setMonthlySummaryCached = (month, payload) => {
   const key = cacheKeyMonthlySummary(month);
   monthlySummaryCache.set(key, {
     payload,
-    expiresAt: Date.now() + MONTHLY_SUMMARY_CACHE_TTL_MS
+    expiresAt: Date.now() + MONTHLY_SUMMARY_CACHE_TTL_MS,
   });
 };
 const invalidateMonthlySummaryCache = (month = null) => {
@@ -185,19 +230,28 @@ const invalidateMonthlySummaryCache = (month = null) => {
 };
 
 const getDhakaMonthYm = (date = new Date()) => {
-  const local = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
-  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}`;
+  const local = new Date(
+    date.toLocaleString("en-US", { timeZone: "Asia/Dhaka" }),
+  );
+  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}`;
 };
-const getDefaultAutoFinalizeMonthYm = (date = new Date()) => previousMonthYm(getDhakaMonthYm(date));
+const getDefaultAutoFinalizeMonthYm = (date = new Date()) =>
+  previousMonthYm(getDhakaMonthYm(date));
 
 const normalizeMonthYm = (rawValue) => {
-  const raw = String(rawValue || '').trim();
+  const raw = String(rawValue || "").trim();
   const match = raw.match(/^(\d{4})-(\d{2})/);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
-  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  )
+    return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
 };
 
 const monthStartDateFromYm = (ym) => `${ym}-01`;
@@ -206,68 +260,76 @@ const previousMonthYm = (ym) => {
   const m = Number(String(ym).slice(5, 7));
   const d = new Date(y, m - 1, 1);
   d.setMonth(d.getMonth() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 const nextMonthYm = (ym) => {
   const y = Number(String(ym).slice(0, 4));
   const m = Number(String(ym).slice(5, 7));
   const d = new Date(y, m - 1, 1);
   d.setMonth(d.getMonth() + 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 
 const isInternalLocalRequest = (req) => {
-  const ip = String(req.ip || req.connection?.remoteAddress || '').trim();
-  if (ip === '127.0.0.1' || ip === '::1') return true;
-  if (ip.endsWith(':127.0.0.1')) return true;
+  const ip = String(req.ip || req.connection?.remoteAddress || "").trim();
+  if (ip === "127.0.0.1" || ip === "::1") return true;
+  if (ip.endsWith(":127.0.0.1")) return true;
   return false;
 };
 
 const normalizeChangeType = (raw) => {
-  const val = String(raw || '').toLowerCase().trim();
-  if (['increase', 'upgrade', 'inc', 'up', 'add', '+'].includes(val)) return 'increase';
-  if (['decrease', 'downgrade', 'dec', 'down', 'reduce', '-'].includes(val)) return 'decrease';
-  return '';
+  const val = String(raw || "")
+    .toLowerCase()
+    .trim();
+  if (["increase", "upgrade", "inc", "up", "add", "+"].includes(val))
+    return "increase";
+  if (["decrease", "downgrade", "dec", "down", "reduce", "-"].includes(val))
+    return "decrease";
+  return "";
 };
 const normalizeBillBwType = (raw) => {
-  const val = String(raw || '').toUpperCase().trim();
+  const val = String(raw || "")
+    .toUpperCase()
+    .trim();
   const map = {
-    IIG: 'IIG',
-    IIG_BW: 'IIG',
-    BDIX: 'BDIX',
-    BDIX_BW: 'BDIX',
-    GGC: 'GGC',
-    GGC_BW: 'GGC',
-    FNA: 'FNA',
-    FNA_BW: 'FNA',
-    CDN: 'CDN',
-    CDN_BW: 'CDN',
-    BCDN: 'BCDN',
-    BCDN_BW: 'BCDN',
-    OTHER: 'BCDN',
-    NTTN: 'NTTN',
-    NTTN_CAPACITY: 'NTTN'
+    IIG: "IIG",
+    IIG_BW: "IIG",
+    BDIX: "BDIX",
+    BDIX_BW: "BDIX",
+    GGC: "GGC",
+    GGC_BW: "GGC",
+    FNA: "FNA",
+    FNA_BW: "FNA",
+    CDN: "CDN",
+    CDN_BW: "CDN",
+    BCDN: "BCDN",
+    BCDN_BW: "BCDN",
+    OTHER: "BCDN",
+    NTTN: "NTTN",
+    NTTN_CAPACITY: "NTTN",
   };
-  return map[val] || '';
+  return map[val] || "";
 };
 
 const BILL_BW_MAP = {
-  IIG: { col: 'iig_bw', rate: 'rate_iig' },
-  BDIX: { col: 'bdix_bw', rate: 'rate_bdix' },
-  GGC: { col: 'ggc_bw', rate: 'rate_ggc' },
-  FNA: { col: 'fna_bw', rate: 'rate_fna' },
-  CDN: { col: 'cdn_bw', rate: 'rate_cdn' },
-  BCDN: { col: 'bcdn_bw', rate: 'rate_bcdn' },
-  NTTN: { col: 'nttn_capacity', rate: 'rate_nttn' }
+  IIG: { col: "iig_bw", rate: "rate_iig" },
+  BDIX: { col: "bdix_bw", rate: "rate_bdix" },
+  GGC: { col: "ggc_bw", rate: "rate_ggc" },
+  FNA: { col: "fna_bw", rate: "rate_fna" },
+  CDN: { col: "cdn_bw", rate: "rate_cdn" },
+  BCDN: { col: "bcdn_bw", rate: "rate_bcdn" },
+  NTTN: { col: "nttn_capacity", rate: "rate_nttn" },
 };
 
 const fmtDayMon = (dateObj) =>
-  dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  dateObj.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
 
 const parseYMD = (value) => {
   if (!value) return null;
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    return Number.isNaN(value.getTime())
+      ? null
+      : new Date(value.getFullYear(), value.getMonth(), value.getDate());
   }
   const raw = String(value).trim();
   const ymd = /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : raw;
@@ -292,18 +354,28 @@ const getResellerRecurringMonthlyTotal = (reseller = {}) => {
   return bandwidthTotal + realIpTotal;
 };
 
-const calculateResellerMonthProjectedTotal = (reseller = {}, targetMonthStr = getDhakaMonthYm()) => {
+const calculateResellerMonthProjectedTotal = (
+  reseller = {},
+  targetMonthStr = getDhakaMonthYm(),
+) => {
   const info = monthInfo(targetMonthStr);
   const created = parseYMD(reseller.joining_date || reseller.created_at);
   if (!created) return 0;
 
-  const createdYM = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
+  const createdYM = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}`;
   if (info.ym < createdYM) return 0;
 
   const recurringTotal = getResellerRecurringMonthlyTotal(reseller);
-  const activeDays = info.ym === createdYM ? Math.max(0, info.daysInMonth - created.getDate() + 1) : info.daysInMonth;
-  const proratedRecurring = info.daysInMonth > 0 ? (recurringTotal / info.daysInMonth) * activeDays : 0;
-  const otcCharge = info.ym === getOtcAppliedMonthYm(reseller) ? parseAmount(reseller.otc_charge, 0) : 0;
+  const activeDays =
+    info.ym === createdYM
+      ? Math.max(0, info.daysInMonth - created.getDate() + 1)
+      : info.daysInMonth;
+  const proratedRecurring =
+    info.daysInMonth > 0 ? (recurringTotal / info.daysInMonth) * activeDays : 0;
+  const otcCharge =
+    info.ym === getOtcAppliedMonthYm(reseller)
+      ? parseAmount(reseller.otc_charge, 0)
+      : 0;
   return Math.round((proratedRecurring + otcCharge) * 100) / 100;
 };
 
@@ -313,14 +385,14 @@ const detectJoiningDateColumn = async () => {
       `SELECT 1
        FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'joining_date'
-       LIMIT 1`
+       LIMIT 1`,
     );
     hasResellerJoiningDateColumn = result.rows.length > 0;
     joiningDateColumnChecked = true;
   } catch (err) {
     hasResellerJoiningDateColumn = false;
     joiningDateColumnChecked = true;
-    console.warn('joining_date schema detect warning:', err.message);
+    console.warn("joining_date schema detect warning:", err.message);
   }
 };
 
@@ -330,14 +402,14 @@ const detectPartnerTypeColumn = async () => {
       `SELECT 1
        FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'partner_type'
-       LIMIT 1`
+       LIMIT 1`,
     );
     hasResellerPartnerTypeColumn = result.rows.length > 0;
     partnerTypeColumnChecked = true;
   } catch (err) {
     hasResellerPartnerTypeColumn = false;
     partnerTypeColumnChecked = true;
-    console.warn('partner_type schema detect warning:', err.message);
+    console.warn("partner_type schema detect warning:", err.message);
   }
 };
 
@@ -347,19 +419,22 @@ const detectOtcAppliedMonthColumn = async () => {
       `SELECT 1
        FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'otc_charge_applied_month'
-       LIMIT 1`
+       LIMIT 1`,
     );
     hasResellerOtcAppliedMonthColumn = result.rows.length > 0;
     otcAppliedMonthColumnChecked = true;
   } catch (err) {
     hasResellerOtcAppliedMonthColumn = false;
     otcAppliedMonthColumnChecked = true;
-    console.warn('otc_charge_applied_month schema detect warning:', err.message);
+    console.warn(
+      "otc_charge_applied_month schema detect warning:",
+      err.message,
+    );
   }
 };
 
-const joiningDateExpr = (alias = '') => {
-  const p = alias ? `${alias}.` : '';
+const joiningDateExpr = (alias = "") => {
+  const p = alias ? `${alias}.` : "";
   return hasResellerJoiningDateColumn
     ? `COALESCE(${p}joining_date::date, ${p}created_at::date)`
     : `${p}created_at::date`;
@@ -375,23 +450,29 @@ const monthInfo = (monthStr) => {
     monthStart,
     monthEnd,
     daysInMonth,
-    monthStartStr: `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-01`,
-    monthEndStr: `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`,
-    ym: `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}`
+    monthStartStr: `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-01`,
+    monthEndStr: `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`,
+    ym: `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}`,
   };
 };
 
 const shouldPauseProjectedBilling = (reseller, targetMonthYm) => {
-  const status = String(reseller?.status || 'active').toLowerCase();
-  if (status === 'active') return false;
+  const status = String(reseller?.status || "active").toLowerCase();
+  if (status === "active") return false;
   return targetMonthYm >= getDhakaMonthYm();
 };
 
-const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, resellerRow = null) => {
+const calculateMonthlyBillBreakdown = async (
+  resellerId,
+  targetMonthStr,
+  resellerRow = null,
+) => {
   const info = monthInfo(targetMonthStr);
-  const reseller = resellerRow || (
-    await pool.query(
-      `SELECT id,
+  const reseller =
+    resellerRow ||
+    (
+      await pool.query(
+        `SELECT id,
               ${joiningDateExpr()} AS joining_date,
               COALESCE(status, 'active') AS status,
               COALESCE(iig_bw,0)::numeric AS iig_bw,
@@ -413,17 +494,18 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
               COALESCE(real_ip_count,0)::int AS real_ip_count,
               COALESCE(real_ip_price,0)::numeric AS real_ip_price
        FROM resellers WHERE id = $1`,
-      [resellerId]
-    )
-  ).rows?.[0];
+        [resellerId],
+      )
+    ).rows?.[0];
 
   if (!reseller) return { items: [], total: 0 };
-  if (shouldPauseProjectedBilling(reseller, info.ym)) return { items: [], total: 0 };
+  if (shouldPauseProjectedBilling(reseller, info.ym))
+    return { items: [], total: 0 };
 
   const created = parseYMD(reseller.joining_date || reseller.created_at);
   if (!created) return { items: [], total: 0 };
 
-  const createdYM = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
+  const createdYM = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}`;
   if (info.ym < createdYM) return { items: [], total: 0 };
   const startDayLimit = info.ym === createdYM ? created.getDate() : 1;
 
@@ -434,7 +516,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
        FROM reseller_rate_history
        WHERE reseller_id = $1 AND effective_date <= $2::date
        ORDER BY effective_date ASC`,
-      [resellerId, info.monthEndStr]
+      [resellerId, info.monthEndStr],
     );
     for (const r of rateRows.rows) {
       const type = normalizeBillBwType(r.bw_type);
@@ -442,7 +524,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
       if (!rateHistoryByType[type]) rateHistoryByType[type] = [];
       rateHistoryByType[type].push({
         rate: Number(r.rate || 0),
-        effective_date: String(r.effective_date).slice(0, 10)
+        effective_date: String(r.effective_date).slice(0, 10),
       });
     }
   } catch (e) {
@@ -458,7 +540,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
        AND COALESCE(engineer_status,'pending') = 'implemented'
        AND implementation_date > $2::date
      ORDER BY implementation_date DESC`,
-    [resellerId, info.monthEndStr]
+    [resellerId, info.monthEndStr],
   );
 
   const workingBw = {};
@@ -470,7 +552,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
     const t = normalizeBillBwType(fc.bw_type);
     if (!Object.prototype.hasOwnProperty.call(workingBw, t)) continue;
     const amt = parseAmount(fc.amount, 0);
-    if (fc.change_type === 'increase') workingBw[t] -= amt;
+    if (fc.change_type === "increase") workingBw[t] -= amt;
     else workingBw[t] += amt;
   }
 
@@ -483,7 +565,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
        AND COALESCE(engineer_status,'pending') = 'implemented'
        AND implementation_date BETWEEN $2::date AND $3::date
      ORDER BY implementation_date DESC`,
-    [resellerId, info.monthStartStr, info.monthEndStr]
+    [resellerId, info.monthStartStr, info.monthEndStr],
   );
 
   const changesByType = {};
@@ -497,12 +579,17 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
   const calcSegmentCost = (bwType, baseRate, fromDay, duration, tempBw) => {
     let segmentCost = 0;
     for (let d = 0; d < duration; d += 1) {
-      const currentDate = new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), fromDay + d);
-      const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+      const currentDate = new Date(
+        info.monthStart.getFullYear(),
+        info.monthStart.getMonth(),
+        fromDay + d,
+      );
+      const currentDateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-${String(currentDate.getDate()).padStart(2, "0")}`;
       let dailyRate = baseRate;
       const history = rateHistoryByType[bwType] || [];
       for (const rh of history) {
-        if (rh.effective_date <= currentDateStr) dailyRate = parseAmount(rh.rate, dailyRate);
+        if (rh.effective_date <= currentDateStr)
+          dailyRate = parseAmount(rh.rate, dailyRate);
       }
       segmentCost += (dailyRate / info.daysInMonth) * tempBw;
     }
@@ -537,19 +624,29 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
           days: duration,
           total: cost,
           date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), changeDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), cursorDay))}`,
-          change_type: change.change_type === 'increase' || change.change_type === 'decrease' ? change.change_type : 'standard'
+          change_type:
+            change.change_type === "increase" ||
+            change.change_type === "decrease"
+              ? change.change_type
+              : "standard",
         });
       }
 
       cursorDay = changeDay - 1;
       const amt = parseAmount(change.amount, 0);
-      if (change.change_type === 'increase') tempBw -= amt;
+      if (change.change_type === "increase") tempBw -= amt;
       else tempBw += amt;
     }
 
     if (cursorDay >= startDayLimit && tempBw > 0) {
       const duration = cursorDay - startDayLimit + 1;
-      const cost = calcSegmentCost(bwType, rate, startDayLimit, duration, tempBw);
+      const cost = calcSegmentCost(
+        bwType,
+        rate,
+        startDayLimit,
+        duration,
+        tempBw,
+      );
       grandTotal += cost;
       items.push({
         desc: bwType,
@@ -558,7 +655,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
         days: duration,
         total: cost,
         date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), startDayLimit))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), cursorDay))}`,
-        change_type: 'standard'
+        change_type: "standard",
       });
     }
   }
@@ -568,16 +665,19 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
   if (realIpCount > 0) {
     const duration = info.daysInMonth - startDayLimit + 1;
     if (duration > 0) {
-      const cost = Math.round((((realIpCount * realIpPrice) / info.daysInMonth) * duration) * 100) / 100;
+      const cost =
+        Math.round(
+          ((realIpCount * realIpPrice) / info.daysInMonth) * duration * 100,
+        ) / 100;
       grandTotal += cost;
       items.push({
-        desc: 'Real IP',
+        desc: "Real IP",
         bw: realIpCount,
         rate: realIpPrice,
         days: duration,
         total: cost,
         date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), startDayLimit))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), info.daysInMonth))}`,
-        change_type: 'standard'
+        change_type: "standard",
       });
     }
   }
@@ -586,13 +686,13 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
   if (otcCharge > 0 && info.ym === getOtcAppliedMonthYm(reseller)) {
     grandTotal += otcCharge;
     items.push({
-      desc: 'OTC',
+      desc: "OTC",
       bw: 1,
       rate: otcCharge,
       days: 1,
       total: Math.round(otcCharge * 100) / 100,
       date_range: fmtDayMon(info.monthStart),
-      change_type: 'standard'
+      change_type: "standard",
     });
   }
 
@@ -607,7 +707,7 @@ const refreshProjectedBillForCurrentMonth = async (resellerId) => {
 
   const existingBill = await pool.query(
     `SELECT id FROM monthly_bills WHERE reseller_id = $1 AND bill_month = $2::date LIMIT 1`,
-    [resellerId, monthStart]
+    [resellerId, monthStart],
   );
 
   // If the month is already finalized, do not overwrite cached projected bill.
@@ -616,7 +716,7 @@ const refreshProjectedBillForCurrentMonth = async (resellerId) => {
       `SELECT COALESCE(current_projected_bill,0)::numeric AS projected
        FROM resellers
        WHERE id = $1`,
-      [resellerId]
+      [resellerId],
     );
     return Math.round(parseAmount(snapshot.rows[0]?.projected, 0) * 100) / 100;
   }
@@ -629,7 +729,7 @@ const refreshProjectedBillForCurrentMonth = async (resellerId) => {
      SET current_projected_bill = $1,
          last_activity_date = NOW()
      WHERE id = $2`,
-    [projected, resellerId]
+    [projected, resellerId],
   );
 
   return projected;
@@ -643,14 +743,16 @@ const syncProjectedBillsForCurrentMonth = async () => {
     `SELECT reseller_id
      FROM monthly_bills
      WHERE bill_month = $1::date`,
-    [monthStart]
+    [monthStart],
   );
-  const finalizedResellerIds = new Set(monthBillCheck.rows.map((row) => Number(row.reseller_id)));
+  const finalizedResellerIds = new Set(
+    monthBillCheck.rows.map((row) => Number(row.reseller_id)),
+  );
 
   const resellersResult = await pool.query(
     `SELECT id
      FROM resellers
-     ORDER BY id ASC`
+     ORDER BY id ASC`,
   );
 
   const results = [];
@@ -660,16 +762,16 @@ const syncProjectedBillsForCurrentMonth = async () => {
       const projected = await refreshProjectedBillForCurrentMonth(resellerId);
       results.push({
         reseller_id: resellerId,
-        status: 'ok',
+        status: "ok",
         finalized: finalizedResellerIds.has(resellerId),
-        projected_bill: projected
+        projected_bill: projected,
       });
     } catch (error) {
       results.push({
         reseller_id: resellerId,
-        status: 'failed',
+        status: "failed",
         finalized: finalizedResellerIds.has(resellerId),
-        error: error.message
+        error: error.message,
       });
     }
   }
@@ -677,50 +779,118 @@ const syncProjectedBillsForCurrentMonth = async () => {
   return {
     month: monthYm,
     total: results.length,
-    updated: results.filter((item) => item.status === 'ok').length,
-    failed: results.filter((item) => item.status !== 'ok').length,
-    results
+    updated: results.filter((item) => item.status === "ok").length,
+    failed: results.filter((item) => item.status !== "ok").length,
+    results,
   };
 };
 
 const syncSidebarMenus = async () => {
-  const hasSidebarMenus = await pool.query("SELECT to_regclass('public.sidebar_menus') AS reg");
+  const hasSidebarMenus = await pool.query(
+    "SELECT to_regclass('public.sidebar_menus') AS reg",
+  );
   if (!hasSidebarMenus.rows[0]?.reg) return;
 
   const updates = [
     ["/reseller-list", "p_reseller_list"],
     ["/tasks-engineer", "p_tech_task"],
     ["/billing-logs", "p_billing_logs"],
-    ["/reseller-status-noc", "p_noc_view"]
+    ["/reseller-status-noc", "p_noc_view"],
   ];
 
   for (const [link, perm] of updates) {
-    await pool.query('UPDATE sidebar_menus SET link = $1 WHERE permission_column = $2', [link, perm]);
+    await pool.query(
+      "UPDATE sidebar_menus SET link = $1 WHERE permission_column = $2",
+      [link, perm],
+    );
   }
   await pool.query(
     `UPDATE sidebar_menus
      SET is_visible = 0
-     WHERE permission_column = 'p_generate_bill' OR link = '/generate-bill'`
+     WHERE permission_column = 'p_generate_bill' OR link = '/generate-bill'`,
   );
 
   const menus = [
-    ['Admin Dashboard', '/admin-dashboard', 'fa-gauge-high', 'all_access', 'Admin Area', 0],
-    ['System Logs', '/system-logs', 'fa-clipboard-list', 'p_system_logs', 'Admin Area', 1],
-    ['Leave Entitlements', '/manage-entitlements', 'fa-layer-group', 'p_manage_leaves', 'Admin Area', 4],
-    ['Phone Directory', '/phone-directory', 'fa-address-book', 'all_access', 'Staff Services', 11],
-    ['Request Bandwidth', '/request-bw', 'fa-network-wired', 'p_request_bw', 'Reseller Management', 120],
-    ['Requests Admin', '/requests-admin', 'fa-user-check', 'p_requests_admin', 'Reseller Management', 121],
-    ['Monthly Summary', '/monthly-summary', 'fa-chart-column', 'p_monthly_summary', 'Finance', 122],
-    ['Invoice', '/invoice', 'fa-receipt', 'p_invoice', 'Finance', 124],
-    ['Static Invoice', '/view-static-invoice', 'fa-file-lines', 'p_view_static_invoice', 'Finance', 125],
-    ['Add Reseller', '/add-reseller', 'fa-user-plus', 'p_add_reseller', 'Reseller Management', 126]
+    [
+      "Admin Dashboard",
+      "/admin-dashboard",
+      "fa-gauge-high",
+      "all_access",
+      "Admin Area",
+      0,
+    ],
+    [
+      "System Logs",
+      "/system-logs",
+      "fa-clipboard-list",
+      "p_system_logs",
+      "Admin Area",
+      1,
+    ],
+    [
+      "Leave Entitlements",
+      "/manage-entitlements",
+      "fa-layer-group",
+      "p_manage_leaves",
+      "Admin Area",
+      4,
+    ],
+    [
+      "Phone Directory",
+      "/phone-directory",
+      "fa-address-book",
+      "all_access",
+      "Staff Services",
+      11,
+    ],
+    [
+      "Request Bandwidth",
+      "/request-bw",
+      "fa-network-wired",
+      "p_request_bw",
+      "Reseller Management",
+      120,
+    ],
+    [
+      "Requests Admin",
+      "/requests-admin",
+      "fa-user-check",
+      "p_requests_admin",
+      "Reseller Management",
+      121,
+    ],
+    [
+      "Monthly Summary",
+      "/monthly-summary",
+      "fa-chart-column",
+      "p_monthly_summary",
+      "Finance",
+      122,
+    ],
+    ["Invoice", "/invoice", "fa-receipt", "p_invoice", "Finance", 124],
+    [
+      "Static Invoice",
+      "/view-static-invoice",
+      "fa-file-lines",
+      "p_view_static_invoice",
+      "Finance",
+      125,
+    ],
+    [
+      "Add Reseller",
+      "/add-reseller",
+      "fa-user-plus",
+      "p_add_reseller",
+      "Reseller Management",
+      126,
+    ],
   ];
 
   for (const m of menus) {
     await pool.query(
-      'INSERT INTO sidebar_menus (menu_name, link, icon, permission_column, category, sort_order, parent_id, is_visible) ' +
-      'SELECT $1,$2,$3,$4,$5,$6,NULL,1 WHERE NOT EXISTS (SELECT 1 FROM sidebar_menus WHERE permission_column = $4 OR link = $2)',
-      m
+      "INSERT INTO sidebar_menus (menu_name, link, icon, permission_column, category, sort_order, parent_id, is_visible) " +
+        "SELECT $1,$2,$3,$4,$5,$6,NULL,1 WHERE NOT EXISTS (SELECT 1 FROM sidebar_menus WHERE permission_column = $4 OR link = $2)",
+      m,
     );
   }
 };
@@ -728,7 +898,7 @@ const syncSidebarMenus = async () => {
 const initBillingAutomationSchema = async () => {
   await pool.query(
     `ALTER TABLE billing_logs
-     ADD COLUMN IF NOT EXISTS log_type VARCHAR(30)`
+     ADD COLUMN IF NOT EXISTS log_type VARCHAR(30)`,
   );
   await pool.query(
     `UPDATE billing_logs
@@ -736,15 +906,15 @@ const initBillingAutomationSchema = async () => {
        WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment'
        ELSE 'adjustment'
      END
-     WHERE log_type IS NULL`
+     WHERE log_type IS NULL`,
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_billing_logs_reseller_date
-     ON billing_logs (reseller_id, effective_date)`
+     ON billing_logs (reseller_id, effective_date)`,
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_billing_logs_type_date
-     ON billing_logs (log_type, effective_date)`
+     ON billing_logs (log_type, effective_date)`,
   );
   await pool.query(
     `CREATE TABLE IF NOT EXISTS billing_finalize_runs (
@@ -759,11 +929,11 @@ const initBillingAutomationSchema = async () => {
       initiator VARCHAR(80) NOT NULL DEFAULT 'system',
       source VARCHAR(40) NOT NULL DEFAULT 'scheduler',
       error_summary TEXT NULL
-    )`
+    )`,
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_billing_finalize_runs_month
-     ON billing_finalize_runs (run_month DESC, started_at DESC)`
+     ON billing_finalize_runs (run_month DESC, started_at DESC)`,
   );
   await pool.query(
     `CREATE TABLE IF NOT EXISTS billing_finalize_run_items (
@@ -774,11 +944,11 @@ const initBillingAutomationSchema = async () => {
       bill_id BIGINT NULL,
       message TEXT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`
+    )`,
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_billing_finalize_run_items_run
-     ON billing_finalize_run_items (run_id, reseller_id)`
+     ON billing_finalize_run_items (run_id, reseller_id)`,
   );
 };
 
@@ -791,11 +961,11 @@ const initPartnerSheetSchema = async () => {
       rows JSONB NOT NULL DEFAULT '[]'::jsonb,
       source_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`
+    )`,
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_partner_sheet_snapshots_updated_at
-     ON partner_sheet_snapshots (updated_at DESC)`
+     ON partner_sheet_snapshots (updated_at DESC)`,
   );
 };
 
@@ -812,32 +982,32 @@ const initialize = async () => {
         await detectOtcAppliedMonthColumn();
       }
       try {
-        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS joining_date DATE`);
+        await pool.query(
+          `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS joining_date DATE`,
+        );
       } catch (err) {
-        console.warn('resellers.joining_date init warning:', err.message);
+        console.warn("resellers.joining_date init warning:", err.message);
       }
       try {
-        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS otc_charge NUMERIC(12,2) NOT NULL DEFAULT 0`);
-        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS real_ip_count INTEGER NOT NULL DEFAULT 0`);
-        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS real_ip_price NUMERIC(12,2) NOT NULL DEFAULT 0`);
-        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS otc_charge_applied_month DATE`);
-        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS partner_type VARCHAR(40) NOT NULL DEFAULT 'distribution_partner'`);
+        await pool.query(
+          `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS otc_charge NUMERIC(12,2) NOT NULL DEFAULT 0`,
+        );
+        await pool.query(
+          `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS real_ip_count INTEGER NOT NULL DEFAULT 0`,
+        );
+        await pool.query(
+          `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS real_ip_price NUMERIC(12,2) NOT NULL DEFAULT 0`,
+        );
+        await pool.query(
+          `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS otc_charge_applied_month DATE`,
+        );
         await pool.query(
           `UPDATE resellers
            SET otc_charge_applied_month = DATE_TRUNC('month', COALESCE(joining_date, created_at))::date
-           WHERE otc_charge_applied_month IS NULL AND COALESCE(otc_charge,0) > 0`
-        );
-        await pool.query(
-          `UPDATE resellers
-           SET partner_type = CASE
-             WHEN LOWER(COALESCE(partner_type, '')) IN ('distribution_partner', 'distribution partner', 'distribution') THEN 'distribution_partner'
-             WHEN LOWER(COALESCE(partner_type, '')) IN ('mac_partner', 'mac partner', 'mac') THEN 'mac_partner'
-             WHEN LOWER(COALESCE(partner_type, '')) IN ('channel_partner', 'channel partner', 'chanel_partner', 'chanel partner', 'channel', 'chanel') THEN 'distribution_partner'
-             ELSE 'distribution_partner'
-           END`
+           WHERE otc_charge_applied_month IS NULL AND COALESCE(otc_charge,0) > 0`,
         );
       } catch (err) {
-        console.warn('resellers otc/real_ip/partner_type init warning:', err.message);
+        console.warn("resellers otc/real_ip init warning:", err.message);
       }
       await detectJoiningDateColumn();
       await detectPartnerTypeColumn();
@@ -845,22 +1015,22 @@ const initialize = async () => {
       try {
         await syncSidebarMenus();
       } catch (err) {
-        console.warn('syncSidebarMenus warning:', err.message);
+        console.warn("syncSidebarMenus warning:", err.message);
       }
       try {
         await initResellerFinancialAuditTable();
       } catch (err) {
-        console.warn('initResellerFinancialAuditTable warning:', err.message);
+        console.warn("initResellerFinancialAuditTable warning:", err.message);
       }
       try {
         await initBillingAutomationSchema();
       } catch (err) {
-        console.warn('initBillingAutomationSchema warning:', err.message);
+        console.warn("initBillingAutomationSchema warning:", err.message);
       }
       try {
         await initPartnerSheetSchema();
       } catch (err) {
-        console.warn('initPartnerSheetSchema warning:', err.message);
+        console.warn("initPartnerSheetSchema warning:", err.message);
       }
     })();
   }
@@ -868,15 +1038,19 @@ const initialize = async () => {
 };
 
 const normalizePartnerSheetTab = (rawTab) => {
-  const tab = String(rawTab || '').trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(PARTNER_SHEET_CONFIG, tab) ? tab : '';
+  const tab = String(rawTab || "")
+    .trim()
+    .toLowerCase();
+  return Object.prototype.hasOwnProperty.call(PARTNER_SHEET_CONFIG, tab)
+    ? tab
+    : "";
 };
 
 const normalizePartnerSheetHeaders = (headers) => {
   if (!Array.isArray(headers)) return [];
   return headers
     .map((header, index) => {
-      const value = String(header || '').trim();
+      const value = String(header || "").trim();
       return value || `Column ${index + 1}`;
     })
     .filter(Boolean);
@@ -886,28 +1060,41 @@ const normalizePartnerSheetRows = (rows, headers = []) => {
   if (!Array.isArray(rows)) return [];
   const normalizedHeaders = normalizePartnerSheetHeaders(headers);
   return rows
-    .filter((row) => row && typeof row === 'object')
+    .filter((row) => row && typeof row === "object")
     .map((row, index) => {
-      const normalizedRow = { __rowNumber: Number(row.__rowNumber || index + 2) };
+      const normalizedRow = {
+        __rowNumber: Number(row.__rowNumber || index + 2),
+      };
       if (normalizedHeaders.length) {
         normalizedHeaders.forEach((header) => {
-          normalizedRow[header] = row[header] ?? '';
+          normalizedRow[header] = row[header] ?? "";
         });
       } else {
         Object.keys(row).forEach((key) => {
-          normalizedRow[key] = key === '__rowNumber' ? normalizedRow.__rowNumber : (row[key] ?? '');
+          normalizedRow[key] =
+            key === "__rowNumber"
+              ? normalizedRow.__rowNumber
+              : (row[key] ?? "");
         });
       }
       return normalizedRow;
     });
 };
 
-const upsertPartnerSheetSnapshot = async ({ tab, title, headers, rows, sourceMeta = {} }) => {
+const upsertPartnerSheetSnapshot = async ({
+  tab,
+  title,
+  headers,
+  rows,
+  sourceMeta = {},
+}) => {
   const normalizedTab = normalizePartnerSheetTab(tab);
   if (!normalizedTab) {
-    throw new Error('Invalid partner sheet tab');
+    throw new Error("Invalid partner sheet tab");
   }
-  const sheetTitle = String(title || PARTNER_SHEET_CONFIG[normalizedTab].title).trim();
+  const sheetTitle = String(
+    title || PARTNER_SHEET_CONFIG[normalizedTab].title,
+  ).trim();
   const normalizedHeaders = normalizePartnerSheetHeaders(headers);
   const normalizedRows = normalizePartnerSheetRows(rows, normalizedHeaders);
   await pool.query(
@@ -924,8 +1111,8 @@ const upsertPartnerSheetSnapshot = async ({ tab, title, headers, rows, sourceMet
       sheetTitle,
       JSON.stringify(normalizedHeaders),
       JSON.stringify(normalizedRows),
-      JSON.stringify(sourceMeta || {})
-    ]
+      JSON.stringify(sourceMeta || {}),
+    ],
   );
 
   return {
@@ -933,7 +1120,7 @@ const upsertPartnerSheetSnapshot = async ({ tab, title, headers, rows, sourceMet
     title: sheetTitle,
     headers: normalizedHeaders,
     rows: normalizedRows,
-    source_meta: sourceMeta
+    source_meta: sourceMeta,
   };
 };
 
@@ -945,7 +1132,7 @@ const readPartnerSheetSnapshot = async (tab) => {
      FROM partner_sheet_snapshots
      WHERE tab_key = $1
      LIMIT 1`,
-    [normalizedTab]
+    [normalizedTab],
   );
   return result.rows[0] || null;
 };
@@ -954,29 +1141,43 @@ const listResellers = async (req, res) => {
   try {
     await initialize();
     const canViewFinancials = canViewResellerFinancials(req.user);
-    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
-    const search = (req.query.search || '').trim();
-    const partnerTypeFilter = normalizePartnerType(req.query.partner_type || '');
-    const rawStatus = String(req.query.status || 'active').trim().toLowerCase();
-    const statusFilter = ['active', 'inactive', 'suspended', 'all'].includes(rawStatus) ? rawStatus : 'active';
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
+      () => hasResellerPartnerTypeColumn,
+    );
+    const search = (req.query.search || "").trim();
+    const partnerTypeFilter = normalizePartnerType(
+      req.query.partner_type || "",
+    );
+    const rawStatus = String(req.query.status || "active")
+      .trim()
+      .toLowerCase();
+    const statusFilter = ["active", "inactive", "suspended", "all"].includes(
+      rawStatus,
+    )
+      ? rawStatus
+      : "active";
     const params = [];
     const whereParts = [];
 
     if (search) {
       params.push(`%${search}%`);
-      whereParts.push(`(COALESCE(r.reseller_name, r.company_name) ILIKE $${params.length} OR r.user_id ILIKE $${params.length} OR r.contact_no ILIKE $${params.length})`);
+      whereParts.push(
+        `(COALESCE(r.reseller_name, r.company_name) ILIKE $${params.length} OR r.user_id ILIKE $${params.length} OR r.contact_no ILIKE $${params.length})`,
+      );
     }
 
-    if (statusFilter !== 'all') {
+    if (statusFilter !== "all") {
       params.push(statusFilter);
-      whereParts.push(`LOWER(COALESCE(r.status, 'active')) = $${params.length}`);
+      whereParts.push(
+        `LOWER(COALESCE(r.status, 'active')) = $${params.length}`,
+      );
     }
     if (partnerTypeFilter) {
       params.push(partnerTypeFilter);
-      whereParts.push(`(${hasPartnerTypeColumn ? normalizedPartnerTypeSql() : "'distribution_partner'"}) = $${params.length}`);
+      whereParts.push(`'distribution_partner' = $${params.length}`);
     }
 
-    const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+    const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
     const result = await pool.query(
       `SELECT
@@ -987,7 +1188,7 @@ const listResellers = async (req, res) => {
         r.contact_no AS phone,
         r.pop_location,
         r.pop_location AS ip_address,
-        ${hasPartnerTypeColumn ? `${normalizedPartnerTypeSql()} AS partner_type,` : `'distribution_partner' AS partner_type,`}
+        'distribution_partner' AS partner_type,
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
         COALESCE(r.ggc_bw,0)::numeric AS ggc_bw,
@@ -1012,7 +1213,7 @@ const listResellers = async (req, res) => {
       FROM resellers r
       ${where}
       ORDER BY r.id DESC`,
-      params
+      params,
     );
 
     const rows = canViewFinancials
@@ -1021,13 +1222,13 @@ const listResellers = async (req, res) => {
           ...r,
           monthly_rate: null,
           due_amount: null,
-          next_pay_date: null
+          next_pay_date: null,
         }));
 
     res.json(rows);
   } catch (error) {
-    console.error('listResellers:', error);
-    res.status(500).json({ message: 'Failed to load resellers' });
+    console.error("listResellers:", error);
+    res.status(500).json({ message: "Failed to load resellers" });
   }
 };
 
@@ -1035,8 +1236,12 @@ const createReseller = async (req, res) => {
   const client = await pool.connect();
   try {
     await initialize();
-    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
-    const hasOtcAppliedMonthColumn = await detectOtcAppliedMonthColumn().then(() => hasResellerOtcAppliedMonthColumn);
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
+      () => hasResellerPartnerTypeColumn,
+    );
+    const hasOtcAppliedMonthColumn = await detectOtcAppliedMonthColumn().then(
+      () => hasResellerOtcAppliedMonthColumn,
+    );
 
     const {
       reseller_name,
@@ -1077,22 +1282,30 @@ const createReseller = async (req, res) => {
       status,
       due_amount,
       next_pay_date,
-      partner_type
+      partner_type,
+      channel_user_count,
     } = req.body || {};
 
-    const resellerName = String(reseller_name || name || '').trim();
-    if (!resellerName) return res.status(400).json({ message: 'Reseller name is required' });
+    const resellerName = String(reseller_name || name || "").trim();
+    if (!resellerName)
+      return res.status(400).json({ message: "Reseller name is required" });
 
-    const manualUserId = String(user_id || reseller_code || '').trim();
-    const baseUserId = resellerName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const generatedUserId = `${baseUserId || 'reseller'}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const manualUserId = String(user_id || reseller_code || "").trim();
+    const baseUserId = resellerName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const generatedUserId = `${baseUserId || "reseller"}_${Math.floor(1000 + Math.random() * 9000)}`;
     const finalUserId = manualUserId || generatedUserId;
     const companyName = String(company_name || resellerName).trim();
-    const rawResellerPassword = String(req.body?.password || contact_no || phone || finalUserId || '123456').trim() || '123456';
+    const rawResellerPassword =
+      String(
+        req.body?.password || contact_no || phone || finalUserId || "123456",
+      ).trim() || "123456";
     const resellerPassword = await bcrypt.hash(rawResellerPassword, 10);
-    const normalizedPartnerType = normalizePartnerType(partner_type) || 'distribution_partner';
+    const normalizedPartnerType =
+      normalizePartnerType(partner_type) || "distribution_partner";
 
-    const joinDate = String(joining_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const joinDate = String(
+      joining_date || new Date().toISOString().slice(0, 10),
+    ).slice(0, 10);
     const otcAppliedMonth = `${getDhakaMonthYm()}-01`;
     const bw = {
       iig_bw: parseAmount(iig_bw, 0),
@@ -1101,7 +1314,7 @@ const createReseller = async (req, res) => {
       fna_bw: parseAmount(fna_bw, 0),
       cdn_bw: parseAmount(cdn_bw, 0),
       bcdn_bw: parseAmount(bcdn_bw, 0),
-      nttn_capacity: parseAmount(nttn_capacity ?? nttn_bw, 0)
+      nttn_capacity: parseAmount(nttn_capacity ?? nttn_bw, 0),
     };
 
     const rate = {
@@ -1111,7 +1324,7 @@ const createReseller = async (req, res) => {
       rate_fna: parseAmount(rate_fna, 0),
       rate_cdn: parseAmount(rate_cdn, 0),
       rate_bcdn: parseAmount(rate_bcdn, 0),
-      rate_nttn: parseAmount(rate_nttn, 0)
+      rate_nttn: parseAmount(rate_nttn, 0),
     };
     const otcCharge = parseAmount(otc_charge, 0);
     const realIpCount = Math.max(0, parseWholeNumber(real_ip_count, 0));
@@ -1123,17 +1336,17 @@ const createReseller = async (req, res) => {
       otc_charge: otcCharge,
       otc_charge_applied_month: otcAppliedMonth,
       real_ip_count: realIpCount,
-      real_ip_price: realIpPrice
+      real_ip_price: realIpPrice,
     });
 
     const nttnTypeText = Array.isArray(nttn_type)
-      ? nttn_type.join(', ')
-      : String(nttn_type || '').trim();
+      ? nttn_type.join(", ")
+      : String(nttn_type || "").trim();
     const connectionTypeText = Array.isArray(connection_type)
-      ? connection_type.join(', ')
-      : String(connection_type || '').trim();
+      ? connection_type.join(", ")
+      : String(connection_type || "").trim();
 
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
     const insertValuesBase = [
       finalUserId,
@@ -1163,11 +1376,11 @@ const createReseller = async (req, res) => {
       Math.round(projectedBill * 100) / 100,
       parseAmount(due_amount, 0),
       next_pay_date || null,
-      String(status || 'active').toLowerCase(),
+      String(status || "active").toLowerCase(),
       parseAmount(security_deposit, 0),
       otcCharge,
       realIpCount,
-      realIpPrice
+      realIpPrice,
     ];
 
     const ins = await client.query(
@@ -1200,7 +1413,7 @@ const createReseller = async (req, res) => {
                 $18,$19,$20,$21,$22,$23,$24,
                 $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35::date,NOW(),NOW()
               ) RETURNING id`
-          : `INSERT INTO resellers (
+            : `INSERT INTO resellers (
               user_id, reseller_name, company_name, pop_location, contact_no,
               iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
               nttn_type, nttn_link, connection_type, latitude, longitude,
@@ -1227,8 +1440,8 @@ const createReseller = async (req, res) => {
               $18,$19,$20,$21,$22,$23,$24,
               $25,$26,$27,$28,$29,$30,$31,$32,$33::date,$34,$35,$36::timestamp,NOW()
             ) RETURNING id`
-        : hasPartnerTypeColumn
-          ? `INSERT INTO resellers (
+          : hasPartnerTypeColumn
+            ? `INSERT INTO resellers (
               user_id, reseller_name, company_name, pop_location, contact_no,
               iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
               nttn_type, nttn_link, connection_type, latitude, longitude,
@@ -1241,7 +1454,7 @@ const createReseller = async (req, res) => {
               $18,$19,$20,$21,$22,$23,$24,
               $25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35::timestamp,NOW()
             ) RETURNING id`
-          : `INSERT INTO resellers (
+            : `INSERT INTO resellers (
               user_id, reseller_name, company_name, pop_location, contact_no,
               iig_bw, bdix_bw, ggc_bw, fna_bw, cdn_bw, bcdn_bw, nttn_capacity,
               nttn_type, nttn_link, connection_type, latitude, longitude,
@@ -1255,13 +1468,41 @@ const createReseller = async (req, res) => {
               $25,$26,$27,$28,$29,$30,$31,$32,$33,$34::timestamp,NOW()
             ) RETURNING id`,
       hasPartnerTypeColumn && hasOtcAppliedMonthColumn
-        ? [...insertValuesBase, otcAppliedMonth, normalizedPartnerType, resellerPassword, joinDate]
+        ? [
+            ...insertValuesBase,
+            otcAppliedMonth,
+            normalizedPartnerType,
+            resellerPassword,
+            joinDate,
+          ]
         : hasPartnerTypeColumn
-          ? [...insertValuesBase, normalizedPartnerType, resellerPassword, joinDate]
-          : [...insertValuesBase, resellerPassword, joinDate]
+          ? [
+              ...insertValuesBase,
+              normalizedPartnerType,
+              resellerPassword,
+              joinDate,
+            ]
+          : [...insertValuesBase, resellerPassword, joinDate],
     );
 
     const newResellerId = ins.rows[0].id;
+
+    // Save channel_user_count if provided (channel partners only)
+    const channelUserCount = Math.max(
+      0,
+      parseInt(channel_user_count || 0, 10) || 0,
+    );
+    if (channelUserCount > 0 || normalizedPartnerType === "channel_partner") {
+      try {
+        await client.query(
+          "UPDATE resellers SET channel_user_count = $1 WHERE id = $2",
+          [channelUserCount, newResellerId],
+        );
+      } catch (_) {
+        // column may not exist on older DB — non-fatal
+      }
+    }
+
     const initPayment = parseAmount(initial_payment, 0);
     const createdAt = `${joinDate}T00:00:00`;
     const actor = getActor(req);
@@ -1271,8 +1512,8 @@ const createReseller = async (req, res) => {
       reseller_id: newResellerId,
       ...actor,
       ...reqMeta,
-      action_type: 'CREATE_RESELLER_FINANCIAL_BASELINE',
-      reference_table: 'resellers',
+      action_type: "CREATE_RESELLER_FINANCIAL_BASELINE",
+      reference_table: "resellers",
       reference_id: newResellerId,
       amount_before: 0,
       amount_after: Math.round(projectedBill * 100) / 100,
@@ -1281,15 +1522,25 @@ const createReseller = async (req, res) => {
       due_after: parseAmount(due_amount, 0),
       due_delta: parseAmount(due_amount, 0),
       field_changes: {
-        current_projected_bill: { old: 0, new: Math.round(projectedBill * 100) / 100 },
+        current_projected_bill: {
+          old: 0,
+          new: Math.round(projectedBill * 100) / 100,
+        },
         previous_month_due: { old: 0, new: parseAmount(due_amount, 0) },
         security_deposit: { old: 0, new: parseAmount(security_deposit, 0) },
         otc_charge: { old: 0, new: otcCharge },
         real_ip_count: { old: 0, new: realIpCount },
         real_ip_price: { old: 0, new: realIpPrice },
       },
-      note: 'Reseller created with financial baseline',
-      request_payload: { due_amount, security_deposit, initial_payment, otc_charge: otcCharge, real_ip_count: realIpCount, real_ip_price: realIpPrice },
+      note: "Reseller created with financial baseline",
+      request_payload: {
+        due_amount,
+        security_deposit,
+        initial_payment,
+        otc_charge: otcCharge,
+        real_ip_count: realIpCount,
+        real_ip_price: realIpPrice,
+      },
     });
 
     if (initPayment > 0) {
@@ -1297,15 +1548,20 @@ const createReseller = async (req, res) => {
         `INSERT INTO billing_logs (reseller_id, change_desc, effective_date, transaction_amount, created_at)
          VALUES ($1,$2,$3::timestamp,$4,NOW())
          RETURNING id`,
-        [newResellerId, `Initial Payment: ${initPayment.toFixed(2)} Tk.`, createdAt, initPayment]
+        [
+          newResellerId,
+          `Initial Payment: ${initPayment.toFixed(2)} Tk.`,
+          createdAt,
+          initPayment,
+        ],
       );
 
       await logResellerFinancialChange(client, {
         reseller_id: newResellerId,
         ...actor,
         ...reqMeta,
-        action_type: 'ADD_INITIAL_PAYMENT',
-        reference_table: 'billing_logs',
+        action_type: "ADD_INITIAL_PAYMENT",
+        reference_table: "billing_logs",
         reference_id: paymentInsert.rows?.[0]?.id || null,
         amount_before: 0,
         amount_after: initPayment,
@@ -1315,16 +1571,21 @@ const createReseller = async (req, res) => {
         due_delta: 0,
         field_changes: { payment_amount: initPayment },
         note: `Initial payment logged for reseller ${newResellerId}`,
-        request_payload: { initial_payment: initPayment, effective_date: createdAt },
+        request_payload: {
+          initial_payment: initPayment,
+          effective_date: createdAt,
+        },
       });
     }
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     res.status(201).json({ id: newResellerId });
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('createReseller:', error);
-    res.status(500).json({ message: 'Failed to create reseller', detail: error.message });
+    await client.query("ROLLBACK");
+    console.error("createReseller:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to create reseller", detail: error.message });
   } finally {
     client.release();
   }
@@ -1332,6 +1593,9 @@ const createReseller = async (req, res) => {
 const getResellerProfile = async (req, res) => {
   try {
     await initialize();
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
+      () => hasResellerPartnerTypeColumn,
+    );
     const { id } = req.params;
 
     const resellerResult = await pool.query(
@@ -1343,6 +1607,7 @@ const getResellerProfile = async (req, res) => {
         r.contact_no AS phone,
         r.pop_location,
         r.pop_location AS ip_address,
+        'distribution_partner' AS partner_type,
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
         COALESCE(r.ggc_bw,0)::numeric AS ggc_bw,
@@ -1356,14 +1621,14 @@ const getResellerProfile = async (req, res) => {
         r.next_pay_date,
         COALESCE(r.status, 'active') AS status,
         r.created_at,
-        ${joiningDateExpr('r')} AS joining_date
+        ${joiningDateExpr("r")} AS joining_date
       FROM resellers r
       WHERE r.id = $1`,
-      [id]
+      [id],
     );
 
     if (!resellerResult.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
 
     const logs = await pool.query(
@@ -1377,7 +1642,7 @@ const getResellerProfile = async (req, res) => {
                 END
               ) AS log_type
        FROM billing_logs WHERE reseller_id = $1 ORDER BY created_at DESC LIMIT 200`,
-      [id]
+      [id],
     );
 
     const requests = await pool.query(
@@ -1386,39 +1651,46 @@ const getResellerProfile = async (req, res) => {
               COALESCE(engineer_status, admin_status, 'pending') AS status,
               created_at, implementation_date AS applied_at
        FROM bandwidth_requests WHERE reseller_id = $1 ORDER BY created_at DESC LIMIT 200`,
-      [id]
+      [id],
     );
 
     const bills = await pool.query(
       `SELECT id, reseller_id, bill_month, amount AS final_amount, adjustment, previous_due, created_at
        FROM monthly_bills WHERE reseller_id = $1 ORDER BY bill_month DESC LIMIT 24`,
-      [id]
+      [id],
     );
 
-    res.json({ reseller: resellerResult.rows[0], billingLogs: logs.rows, bandwidthRequests: requests.rows, monthlyBills: bills.rows });
+    res.json({
+      reseller: resellerResult.rows[0],
+      billingLogs: logs.rows,
+      bandwidthRequests: requests.rows,
+      monthlyBills: bills.rows,
+    });
   } catch (error) {
-    console.error('getResellerProfile:', error);
-    res.status(500).json({ message: 'Failed to load reseller profile' });
+    console.error("getResellerProfile:", error);
+    res.status(500).json({ message: "Failed to load reseller profile" });
   }
 };
 
 const getResellerProfileDetails = async (req, res) => {
   try {
     await initialize();
-    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
+      () => hasResellerPartnerTypeColumn,
+    );
     const { id } = req.params;
     const perms = req.user?.permissions || {};
     const isAdmin = isAdminRole(req.user) || !!perms.all_access;
     const canViewProfile =
       isAdmin ||
       hasAnyPermission(req.user, [
-        'reseller.profile',
-        'reseller.list',
-        'reseller.tasks.manage',
-        'reseller.status_noc.view'
+        "reseller.profile",
+        "reseller.list",
+        "reseller.tasks.manage",
+        "reseller.status_noc.view",
       ]);
     if (!canViewProfile) {
-      return res.status(403).json({ message: 'Access denied' });
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const resellerResult = await pool.query(
@@ -1431,7 +1703,7 @@ const getResellerProfileDetails = async (req, res) => {
         r.pop_location,
         r.latitude,
         r.longitude,
-        ${hasPartnerTypeColumn ? `${normalizedPartnerTypeSql()} AS partner_type,` : `'distribution_partner' AS partner_type,`}
+        ${hasPartnerTypeColumn ? `COALESCE(${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")}, 'distribution_partner') AS partner_type,` : `'distribution_partner' AS partner_type,`}
         COALESCE(r.status, 'active') AS status,
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
@@ -1457,16 +1729,17 @@ const getResellerProfileDetails = async (req, res) => {
         ${hasResellerOtcAppliedMonthColumn ? `r.otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(r.real_ip_count,0)::int AS real_ip_count,
         COALESCE(r.real_ip_price,0)::numeric AS real_ip_price,
+        COALESCE(r.channel_user_count,0)::int AS channel_user_count,
         r.next_pay_date,
         r.created_at,
-        ${joiningDateExpr('r')} AS joining_date
+        ${joiningDateExpr("r")} AS joining_date
       FROM resellers r
       WHERE r.id = $1`,
-      [id]
+      [id],
     );
 
     if (!resellerResult.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
     const reseller = resellerResult.rows[0];
 
@@ -1486,9 +1759,11 @@ const getResellerProfileDetails = async (req, res) => {
              ELSE 'adjustment'
            END
          ) = 'payment'`,
-      [id, currentMonth]
+      [id, currentMonth],
     );
-    const totalPaidCurrentMonth = Number(paidCurrentMonthResult.rows[0]?.total || 0);
+    const totalPaidCurrentMonth = Number(
+      paidCurrentMonthResult.rows[0]?.total || 0,
+    );
 
     const discountCurrentMonthResult = await pool.query(
       `SELECT COALESCE(SUM(transaction_amount),0)::numeric AS total
@@ -1503,9 +1778,11 @@ const getResellerProfileDetails = async (req, res) => {
              ELSE 'adjustment'
            END
          ) = 'discount'`,
-      [id, currentMonth]
+      [id, currentMonth],
     );
-    const totalDiscountCurrentMonth = Number(discountCurrentMonthResult.rows[0]?.total || 0);
+    const totalDiscountCurrentMonth = Number(
+      discountCurrentMonthResult.rows[0]?.total || 0,
+    );
 
     const currentBillResult = await pool.query(
       `SELECT id, bill_month, created_at,
@@ -1515,14 +1792,16 @@ const getResellerProfileDetails = async (req, res) => {
        FROM monthly_bills
        WHERE reseller_id = $1 AND bill_month = $2::date
        LIMIT 1`,
-      [id, currentMonthDate]
+      [id, currentMonthDate],
     );
     const currentBill = currentBillResult.rows[0] || null;
 
     let paymentsAfterLastBill = 0;
     let netDue = 0;
-    let calcTooltip = '';
-    let projectedBillCurrentMonth = Number(reseller.current_projected_bill || 0);
+    let calcTooltip = "";
+    let projectedBillCurrentMonth = Number(
+      reseller.current_projected_bill || 0,
+    );
     let previousDueCurrentMonth = Number(reseller.previous_month_due || 0);
 
     if (currentBill) {
@@ -1542,12 +1821,16 @@ const getResellerProfileDetails = async (req, res) => {
                ELSE 'adjustment'
              END
            ) IN ('payment','discount')`,
-        [id, currentBill.created_at]
+        [id, currentBill.created_at],
       );
       paymentsAfterLastBill = Number(afterBillResult.rows[0]?.total || 0);
     } else {
       try {
-        const breakdown = await calculateMonthlyBillBreakdown(id, currentMonth, reseller);
+        const breakdown = await calculateMonthlyBillBreakdown(
+          id,
+          currentMonth,
+          reseller,
+        );
         projectedBillCurrentMonth = Number(breakdown.total || 0);
         try {
           await pool.query(
@@ -1555,18 +1838,25 @@ const getResellerProfileDetails = async (req, res) => {
              SET current_projected_bill = $1,
                  last_activity_date = NOW()
              WHERE id = $2`,
-            [Math.round(projectedBillCurrentMonth * 100) / 100, id]
+            [Math.round(projectedBillCurrentMonth * 100) / 100, id],
           );
         } catch (syncErr) {
-          console.warn(`getResellerProfileDetails sync cache warning for reseller=${id}: ${syncErr.message}`);
+          console.warn(
+            `getResellerProfileDetails sync cache warning for reseller=${id}: ${syncErr.message}`,
+          );
         }
       } catch (breakdownErr) {
-        projectedBillCurrentMonth = Number(reseller.current_projected_bill || 0);
-        console.warn(`getResellerProfileDetails breakdown fallback failed for reseller=${id}, month=${currentMonth}: ${breakdownErr.message}`);
+        projectedBillCurrentMonth = Number(
+          reseller.current_projected_bill || 0,
+        );
+        console.warn(
+          `getResellerProfileDetails breakdown fallback failed for reseller=${id}, month=${currentMonth}: ${breakdownErr.message}`,
+        );
       }
     }
 
-    projectedBillCurrentMonth = Math.round(projectedBillCurrentMonth * 100) / 100;
+    projectedBillCurrentMonth =
+      Math.round(projectedBillCurrentMonth * 100) / 100;
     previousDueCurrentMonth = Math.round(previousDueCurrentMonth * 100) / 100;
 
     // Current due formula: (Previous Due + Projected Bill) - Paid This Month - Discount This Month
@@ -1575,7 +1865,8 @@ const getResellerProfileDetails = async (req, res) => {
       projectedBillCurrentMonth -
       totalPaidCurrentMonth -
       totalDiscountCurrentMonth;
-    calcTooltip = 'Formula: (Previous Due + Projected Bill) - Paid This Month - Discount This Month';
+    calcTooltip =
+      "Formula: (Previous Due + Projected Bill) - Paid This Month - Discount This Month";
 
     const lastBillResult = await pool.query(
       `SELECT id, bill_month
@@ -1583,11 +1874,11 @@ const getResellerProfileDetails = async (req, res) => {
        WHERE reseller_id = $1
        ORDER BY bill_month DESC
        LIMIT 1`,
-      [id]
+      [id],
     );
     const lastBill = lastBillResult.rows[0] || null;
 
-    let pendingBillWarning = '';
+    let pendingBillWarning = "";
     if (lastBill?.bill_month) {
       const lastBillMonth = String(lastBill.bill_month).slice(0, 7);
       const prevMonthCheck = previousMonthYm(currentMonth);
@@ -1609,7 +1900,7 @@ const getResellerProfileDetails = async (req, res) => {
        WHERE reseller_id = $1
        ORDER BY created_at DESC
        LIMIT 5`,
-      [id]
+      [id],
     );
 
     const statementResult = await pool.query(
@@ -1660,12 +1951,13 @@ const getResellerProfileDetails = async (req, res) => {
          ) IN ('payment','discount')
        ORDER BY date DESC
        LIMIT 20`,
-      [id]
+      [id],
     );
 
     const statementItems = statementResult.rows.map((item) => ({
       ...item,
-      action_url: item.type === 'invoice' ? `/view-static-invoice?id=${item.id}` : null
+      action_url:
+        item.type === "invoice" ? `/view-static-invoice?id=${item.id}` : null,
     }));
 
     const recentBillsResult = await pool.query(
@@ -1674,7 +1966,7 @@ const getResellerProfileDetails = async (req, res) => {
        WHERE reseller_id = $1
        ORDER BY bill_month DESC
        LIMIT 5`,
-      [id]
+      [id],
     );
 
     const billHistory = [];
@@ -1693,7 +1985,7 @@ const getResellerProfileDetails = async (req, res) => {
                ELSE 'adjustment'
              END
            ) IN ('payment','discount')`,
-        [id, ym]
+        [id, ym],
       );
       const paid = Number(paidResult.rows[0]?.paid || 0);
       const prevDue = Number(bill.previous_due || 0);
@@ -1704,8 +1996,10 @@ const getResellerProfileDetails = async (req, res) => {
     }
 
     const canViewFinancials = canViewResellerFinancials(req.user);
-    const canAddPayment = isAdmin || resolvePermission(req.user, 'billing.logs.view');
-    const canAddDiscount = canAddPayment || resolvePermission(req.user, 'billing.discount.add');
+    const canAddPayment =
+      isAdmin || resolvePermission(req.user, "billing.logs.view");
+    const canAddDiscount =
+      canAddPayment || resolvePermission(req.user, "billing.discount.add");
     const canViewInvoice = canViewFinancials;
 
     const safeReseller = { ...reseller };
@@ -1713,9 +2007,19 @@ const getResellerProfileDetails = async (req, res) => {
     safeReseller.current_projected_bill = projectedBillCurrentMonth;
     if (!canViewFinancials) {
       [
-        'rate_iig', 'rate_bdix', 'rate_ggc', 'rate_fna', 'rate_cdn', 'rate_bcdn', 'rate_nttn',
-        'previous_month_due', 'current_projected_bill', 'security_deposit', 'next_pay_date',
-        'otc_charge', 'real_ip_price'
+        "rate_iig",
+        "rate_bdix",
+        "rate_ggc",
+        "rate_fna",
+        "rate_cdn",
+        "rate_bcdn",
+        "rate_nttn",
+        "previous_month_due",
+        "current_projected_bill",
+        "security_deposit",
+        "next_pay_date",
+        "otc_charge",
+        "real_ip_price",
       ].forEach((k) => {
         safeReseller[k] = null;
       });
@@ -1727,31 +2031,31 @@ const getResellerProfileDetails = async (req, res) => {
 
     const safeStats = canViewFinancials
       ? {
-        total_paid_current_month: totalPaidCurrentMonth,
-        total_discount_current_month: totalDiscountCurrentMonth,
-        previous_due_current_month: previousDueCurrentMonth,
-        projected_bill_current_month: projectedBillCurrentMonth,
-        calculation_month: currentMonth,
-        paid_for_due_calculation: paidForDueCalculation,
-        payments_after_last_bill: paymentsAfterLastBill,
-        net_due: netDue,
-        calc_tooltip: calcTooltip,
-        pending_bill_warning: pendingBillWarning,
-        has_current_bill: Boolean(currentBill)
-      }
+          total_paid_current_month: totalPaidCurrentMonth,
+          total_discount_current_month: totalDiscountCurrentMonth,
+          previous_due_current_month: previousDueCurrentMonth,
+          projected_bill_current_month: projectedBillCurrentMonth,
+          calculation_month: currentMonth,
+          paid_for_due_calculation: paidForDueCalculation,
+          payments_after_last_bill: paymentsAfterLastBill,
+          net_due: netDue,
+          calc_tooltip: calcTooltip,
+          pending_bill_warning: pendingBillWarning,
+          has_current_bill: Boolean(currentBill),
+        }
       : {
-        total_paid_current_month: null,
-        total_discount_current_month: null,
-        previous_due_current_month: null,
-        projected_bill_current_month: null,
-        calculation_month: null,
-        paid_for_due_calculation: null,
-        payments_after_last_bill: null,
-        net_due: null,
-        calc_tooltip: null,
-        pending_bill_warning: '',
-        has_current_bill: false
-      };
+          total_paid_current_month: null,
+          total_discount_current_month: null,
+          previous_due_current_month: null,
+          projected_bill_current_month: null,
+          calculation_month: null,
+          paid_for_due_calculation: null,
+          payments_after_last_bill: null,
+          net_due: null,
+          calc_tooltip: null,
+          pending_bill_warning: "",
+          has_current_bill: false,
+        };
 
     res.json({
       reseller: safeReseller,
@@ -1760,23 +2064,27 @@ const getResellerProfileDetails = async (req, res) => {
         can_add_payment: canViewFinancials && canAddPayment,
         can_add_discount: canViewFinancials && canAddDiscount,
         can_edit_profile: isAdmin,
-        can_view_invoice: canViewInvoice
+        can_view_invoice: canViewInvoice,
       },
       stats: safeStats,
       recent_requests: recentRequestsResult.rows,
       statement_items: canViewFinancials ? statementItems : [],
       recent_bills: canViewFinancials ? recentBillsResult.rows : [],
-      bill_history: canViewFinancials ? billHistory : []
+      bill_history: canViewFinancials ? billHistory : [],
     });
   } catch (error) {
-    console.error('getResellerProfileDetails:', error);
-    res.status(500).json({ message: 'Failed to load reseller profile details' });
+    console.error("getResellerProfileDetails:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to load reseller profile details" });
   }
 };
 const updateReseller = async (req, res) => {
   try {
     await initialize();
-    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(() => hasResellerPartnerTypeColumn);
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
+      () => hasResellerPartnerTypeColumn,
+    );
     await detectOtcAppliedMonthColumn();
     const { id } = req.params;
     const {
@@ -1814,41 +2122,50 @@ const updateReseller = async (req, res) => {
       otc_charge,
       real_ip_count,
       real_ip_price,
-      partner_type
+      partner_type,
     } = req.body;
-    const newPasswordRaw = String(req.body?.password || '').trim();
-    const newHashedPassword = newPasswordRaw ? await bcrypt.hash(newPasswordRaw, 10) : null;
-    const normalizedJoiningDate = /^\d{4}-\d{2}-\d{2}$/.test(String(joining_date || '').trim())
+    const newPasswordRaw = String(req.body?.password || "").trim();
+    const newHashedPassword = newPasswordRaw
+      ? await bcrypt.hash(newPasswordRaw, 10)
+      : null;
+    const normalizedJoiningDate = /^\d{4}-\d{2}-\d{2}$/.test(
+      String(joining_date || "").trim(),
+    )
       ? String(joining_date).slice(0, 10)
       : null;
-    const normalizedStatus = String(status || '').trim().toLowerCase();
+    const normalizedStatus = String(status || "")
+      .trim()
+      .toLowerCase();
     const hasExplicitStatus = normalizedStatus.length > 0;
-    const shouldZeroProjectedBill = hasExplicitStatus && normalizedStatus !== 'active';
+    const shouldZeroProjectedBill =
+      hasExplicitStatus && normalizedStatus !== "active";
     const hasExplicitPartnerType = req.body.partner_type !== undefined;
     const hasExplicitOtcCharge = req.body.otc_charge !== undefined;
     const hasBillingImpactingChange = [
-      'iig_bw',
-      'bdix_bw',
-      'ggc_bw',
-      'fna_bw',
-      'cdn_bw',
-      'bcdn_bw',
-      'nttn_capacity',
-      'rate_iig',
-      'rate_bdix',
-      'rate_ggc',
-      'rate_fna',
-      'rate_cdn',
-      'rate_bcdn',
-      'rate_nttn',
-      'joining_date',
-      'real_ip_count',
-      'real_ip_price',
-      'otc_charge',
-      'status'
+      "iig_bw",
+      "bdix_bw",
+      "ggc_bw",
+      "fna_bw",
+      "cdn_bw",
+      "bcdn_bw",
+      "nttn_capacity",
+      "rate_iig",
+      "rate_bdix",
+      "rate_ggc",
+      "rate_fna",
+      "rate_cdn",
+      "rate_bcdn",
+      "rate_nttn",
+      "joining_date",
+      "real_ip_count",
+      "real_ip_price",
+      "otc_charge",
+      "status",
     ].some((key) => req.body[key] !== undefined);
     const shouldRefreshProjectedBill =
-      hasBillingImpactingChange && normalizedStatus !== 'inactive' && normalizedStatus !== 'suspended';
+      hasBillingImpactingChange &&
+      normalizedStatus !== "inactive" &&
+      normalizedStatus !== "suspended";
     const normalizedPartnerType = normalizePartnerType(partner_type);
 
     const beforeResult = await pool.query(
@@ -1867,10 +2184,10 @@ const updateReseller = async (req, res) => {
               COALESCE(rate_bcdn,0)::numeric AS rate_bcdn,
               COALESCE(rate_nttn,0)::numeric AS rate_nttn
        FROM resellers WHERE id = $1`,
-      [id]
+      [id],
     );
     if (!beforeResult.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
     const before = beforeResult.rows[0];
 
@@ -1889,7 +2206,9 @@ const updateReseller = async (req, res) => {
       req.body.fna_bw !== undefined ? parseAmount(fna_bw, 0) : null,
       req.body.cdn_bw !== undefined ? parseAmount(cdn_bw, 0) : null,
       req.body.bcdn_bw !== undefined ? parseAmount(bcdn_bw, 0) : null,
-      req.body.nttn_capacity !== undefined ? parseAmount(nttn_capacity, 0) : null,
+      req.body.nttn_capacity !== undefined
+        ? parseAmount(nttn_capacity, 0)
+        : null,
       nttn_type || null,
       nttn_link || null,
       connection_type || null,
@@ -1900,14 +2219,24 @@ const updateReseller = async (req, res) => {
       req.body.rate_cdn !== undefined ? parseAmount(rate_cdn, 0) : null,
       req.body.rate_bcdn !== undefined ? parseAmount(rate_bcdn, 0) : null,
       req.body.rate_nttn !== undefined ? parseAmount(rate_nttn, 0) : null,
-      shouldZeroProjectedBill ? 0 : (req.body.monthly_rate !== undefined ? parseAmount(monthly_rate, 0) : null),
+      shouldZeroProjectedBill
+        ? 0
+        : req.body.monthly_rate !== undefined
+          ? parseAmount(monthly_rate, 0)
+          : null,
       req.body.due_amount !== undefined ? parseAmount(due_amount, 0) : null,
       next_pay_date || null,
-      req.body.security_deposit !== undefined ? parseAmount(security_deposit, 0) : null,
+      req.body.security_deposit !== undefined
+        ? parseAmount(security_deposit, 0)
+        : null,
       req.body.otc_charge !== undefined ? parseAmount(otc_charge, 0) : null,
-      req.body.real_ip_count !== undefined ? Math.max(0, parseWholeNumber(real_ip_count, 0)) : null,
-      req.body.real_ip_price !== undefined ? parseAmount(real_ip_price, 0) : null,
-      newHashedPassword
+      req.body.real_ip_count !== undefined
+        ? Math.max(0, parseWholeNumber(real_ip_count, 0))
+        : null,
+      req.body.real_ip_price !== undefined
+        ? parseAmount(real_ip_price, 0)
+        : null,
+      newHashedPassword,
     ];
 
     const updateQuery = hasResellerJoiningDateColumn
@@ -2026,44 +2355,54 @@ const updateReseller = async (req, res) => {
         `UPDATE resellers
          SET otc_charge_applied_month = $1
          WHERE id = $2`,
-        [parseAmount(otc_charge, 0) > 0 ? `${getDhakaMonthYm()}-01` : null, id]
+        [parseAmount(otc_charge, 0) > 0 ? `${getDhakaMonthYm()}-01` : null, id],
       );
     }
 
     if (shouldRefreshProjectedBill) {
-      const refreshedProjected = await refreshProjectedBillForCurrentMonth(Number(id));
+      const refreshedProjected = await refreshProjectedBillForCurrentMonth(
+        Number(id),
+      );
       after = {
         ...after,
-        current_projected_bill: refreshedProjected
+        current_projected_bill: refreshedProjected,
       };
     }
-    if (hasPartnerTypeColumn && hasExplicitPartnerType && normalizedPartnerType) {
-      await pool.query(
-        `UPDATE resellers SET partner_type = $1 WHERE id = $2`,
-        [normalizedPartnerType, id]
-      );
+    if (
+      hasPartnerTypeColumn &&
+      hasExplicitPartnerType &&
+      normalizedPartnerType
+    ) {
+      await pool.query(`UPDATE resellers SET partner_type = $1 WHERE id = $2`, [
+        normalizedPartnerType,
+        id,
+      ]);
     }
     const watchedFields = [
-      'current_projected_bill',
-      'previous_month_due',
-      'security_deposit',
-      'otc_charge',
-      'real_ip_count',
-      'real_ip_price',
-      'rate_iig',
-      'rate_bdix',
-      'rate_ggc',
-      'rate_fna',
-      'rate_cdn',
-      'rate_bcdn',
-      'rate_nttn',
+      "current_projected_bill",
+      "previous_month_due",
+      "security_deposit",
+      "otc_charge",
+      "real_ip_count",
+      "real_ip_price",
+      "rate_iig",
+      "rate_bdix",
+      "rate_ggc",
+      "rate_fna",
+      "rate_cdn",
+      "rate_bcdn",
+      "rate_nttn",
     ];
     const fieldChanges = {};
     for (const field of watchedFields) {
       const oldVal = parseAmount(before[field], 0);
       const newVal = parseAmount(after[field], 0);
       if (oldVal !== newVal) {
-        fieldChanges[field] = { old: oldVal, new: newVal, delta: Math.round((newVal - oldVal) * 100) / 100 };
+        fieldChanges[field] = {
+          old: oldVal,
+          new: newVal,
+          delta: Math.round((newVal - oldVal) * 100) / 100,
+        };
       }
     }
 
@@ -2074,45 +2413,57 @@ const updateReseller = async (req, res) => {
         reseller_id: Number(id),
         ...actor,
         ...reqMeta,
-        action_type: 'UPDATE_RESELLER_FINANCIAL_FIELDS',
-        reference_table: 'resellers',
+        action_type: "UPDATE_RESELLER_FINANCIAL_FIELDS",
+        reference_table: "resellers",
         reference_id: Number(id),
         amount_before: parseAmount(before.current_projected_bill, 0),
         amount_after: parseAmount(after.current_projected_bill, 0),
-        amount_delta: parseAmount(after.current_projected_bill, 0) - parseAmount(before.current_projected_bill, 0),
+        amount_delta:
+          parseAmount(after.current_projected_bill, 0) -
+          parseAmount(before.current_projected_bill, 0),
         due_before: parseAmount(before.previous_month_due, 0),
         due_after: parseAmount(after.previous_month_due, 0),
-        due_delta: parseAmount(after.previous_month_due, 0) - parseAmount(before.previous_month_due, 0),
+        due_delta:
+          parseAmount(after.previous_month_due, 0) -
+          parseAmount(before.previous_month_due, 0),
         field_changes: fieldChanges,
-        note: 'Reseller financial fields updated',
+        note: "Reseller financial fields updated",
         request_payload: req.body || {},
       });
     }
 
     invalidateMonthlySummaryCache();
-    res.json({ message: 'Updated' });
+    res.json({ message: "Updated" });
   } catch (error) {
-    console.error('updateReseller:', error);
-    res.status(500).json({ message: 'Failed to update reseller' });
+    console.error("updateReseller:", error);
+    res.status(500).json({ message: "Failed to update reseller" });
   }
 };
 const getStatusNoc = async (req, res) => {
   try {
     await initialize();
-    const canViewNoc = hasAnyPermission(req.user, ['reseller.status_noc.view']) || isAdminRole(req.user);
+    const canViewNoc =
+      hasAnyPermission(req.user, ["reseller.status_noc.view"]) ||
+      isAdminRole(req.user);
     if (!canViewNoc) {
-      return res.status(403).json({ message: 'Access denied' });
+      return res.status(403).json({ message: "Access denied" });
     }
     const canViewFinancials = canViewResellerFinancials(req.user);
-    const rawStatus = String(req.query.status || 'active').trim().toLowerCase();
-    const statusFilter = ['active', 'inactive', 'suspended', 'all'].includes(rawStatus) ? rawStatus : 'active';
+    const rawStatus = String(req.query.status || "active")
+      .trim()
+      .toLowerCase();
+    const statusFilter = ["active", "inactive", "suspended", "all"].includes(
+      rawStatus,
+    )
+      ? rawStatus
+      : "active";
     const params = [];
     const whereParts = [];
-    if (statusFilter !== 'all') {
+    if (statusFilter !== "all") {
       params.push(statusFilter);
       whereParts.push(`LOWER(COALESCE(status, 'active')) = $${params.length}`);
     }
-    const where = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+    const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
     const result = await pool.query(
       `SELECT
@@ -2137,19 +2488,19 @@ const getStatusNoc = async (req, res) => {
       FROM resellers
       ${where}
       ORDER BY COALESCE(reseller_name, company_name) ASC`,
-      params
+      params,
     );
     const rows = canViewFinancials
       ? result.rows
       : result.rows.map((r) => ({
           ...r,
-          monthly_rate: null
+          monthly_rate: null,
         }));
 
     res.json(rows);
   } catch (error) {
-    console.error('getStatusNoc:', error);
-    res.status(500).json({ message: 'Failed to load NOC status' });
+    console.error("getStatusNoc:", error);
+    res.status(500).json({ message: "Failed to load NOC status" });
   }
 };
 
@@ -2159,38 +2510,58 @@ const createBandwidthRequest = async (req, res) => {
 
     const resellerId = Number(req.body?.reseller_id || 0);
     if (!resellerId) {
-      return res.status(400).json({ message: 'reseller_id is required' });
+      return res.status(400).json({ message: "reseller_id is required" });
     }
 
-    const adminNote = String(req.body?.admin_note || req.body?.reason || '').trim() || null;
+    const adminNote =
+      String(req.body?.admin_note || req.body?.reason || "").trim() || null;
     const requestedBy = req.user?.id || null;
 
     const rawBwData = req.body?.bw_data;
     const requests = [];
 
-    if (rawBwData && typeof rawBwData === 'object') {
+    if (rawBwData && typeof rawBwData === "object") {
       for (const [bwType, data] of Object.entries(rawBwData)) {
-        const row = (data && typeof data === 'object') ? data : {};
-        const action = normalizeChangeType(row.action || row.change_type || row.type || row.mode);
-        const amountRaw = row.amount ?? row.requested_bw_mbps ?? row.requested_bw ?? row.qty ?? row.value;
+        const row = data && typeof data === "object" ? data : {};
+        const action = normalizeChangeType(
+          row.action || row.change_type || row.type || row.mode,
+        );
+        const amountRaw =
+          row.amount ??
+          row.requested_bw_mbps ??
+          row.requested_bw ??
+          row.qty ??
+          row.value;
         const amount = Math.max(0, Math.round(parseAmount(amountRaw, 0)));
-        if ((action === 'increase' || action === 'decrease') && amount > 0) {
+        if ((action === "increase" || action === "decrease") && amount > 0) {
           requests.push({ bw_type: bwType, change_type: action, amount });
         }
       }
     }
 
     if (!requests.length) {
-      const singleAmount = Math.max(0, Math.round(parseAmount(req.body?.requested_bw_mbps, 0)));
-      const singleAction = normalizeChangeType(req.body?.change_type || req.body?.action || 'increase');
-      const singleType = String(req.body?.bw_type || 'IIG').trim() || 'IIG';
-      if (singleAmount > 0 && (singleAction === 'increase' || singleAction === 'decrease')) {
-        requests.push({ bw_type: singleType, change_type: singleAction, amount: singleAmount });
+      const singleAmount = Math.max(
+        0,
+        Math.round(parseAmount(req.body?.requested_bw_mbps, 0)),
+      );
+      const singleAction = normalizeChangeType(
+        req.body?.change_type || req.body?.action || "increase",
+      );
+      const singleType = String(req.body?.bw_type || "IIG").trim() || "IIG";
+      if (
+        singleAmount > 0 &&
+        (singleAction === "increase" || singleAction === "decrease")
+      ) {
+        requests.push({
+          bw_type: singleType,
+          change_type: singleAction,
+          amount: singleAmount,
+        });
       }
     }
 
     if (!requests.length) {
-      return res.status(400).json({ message: 'No valid request found' });
+      return res.status(400).json({ message: "No valid request found" });
     }
 
     const inserted = [];
@@ -2201,29 +2572,41 @@ const createBandwidthRequest = async (req, res) => {
           admin_note, admin_status, engineer_status, created_at
         ) VALUES ($1,$2,$3,$4,CURRENT_DATE,$5,$6,$7,'pending','pending',NOW())
          RETURNING *`,
-        [resellerId, reqRow.bw_type, reqRow.change_type, reqRow.amount, requestedBy, adminNote, adminNote]
+        [
+          resellerId,
+          reqRow.bw_type,
+          reqRow.change_type,
+          reqRow.amount,
+          requestedBy,
+          adminNote,
+          adminNote,
+        ],
       );
       inserted.push(result.rows[0]);
     }
 
-    res.status(201).json({ message: 'Requests submitted', count: inserted.length, requests: inserted });
+    res.status(201).json({
+      message: "Requests submitted",
+      count: inserted.length,
+      requests: inserted,
+    });
   } catch (error) {
-    console.error('createBandwidthRequest:', error);
-    res.status(500).json({ message: 'Failed to submit bandwidth request' });
+    console.error("createBandwidthRequest:", error);
+    res.status(500).json({ message: "Failed to submit bandwidth request" });
   }
 };
 const listBandwidthRequests = async (req, res) => {
   try {
     await initialize();
-    const status = (req.query.status || '').toLowerCase();
+    const status = (req.query.status || "").toLowerCase();
     const params = [];
-    let where = '';
+    let where = "";
 
-    if (status === 'pending') {
+    if (status === "pending") {
       where = "WHERE COALESCE(br.admin_status,'pending') = 'pending'";
-    } else if (status === 'approved') {
+    } else if (status === "approved") {
       where = "WHERE COALESCE(br.admin_status,'pending') = 'approved'";
-    } else if (status === 'rejected') {
+    } else if (status === "rejected") {
       where = "WHERE COALESCE(br.admin_status,'pending') = 'rejected'";
     }
 
@@ -2257,13 +2640,13 @@ const listBandwidthRequests = async (req, res) => {
        JOIN resellers r ON r.id = br.reseller_id
        ${where}
        ORDER BY br.created_at DESC, br.id DESC`,
-      params
+      params,
     );
 
     res.json(result.rows);
   } catch (error) {
-    console.error('listBandwidthRequests:', error);
-    res.status(500).json({ message: 'Failed to load requests' });
+    console.error("listBandwidthRequests:", error);
+    res.status(500).json({ message: "Failed to load requests" });
   }
 };
 
@@ -2271,38 +2654,52 @@ const reviewBandwidthRequest = async (req, res) => {
   try {
     await initialize();
     const { id } = req.params;
-    const status = (req.body.status || '').toLowerCase();
-    if (!['approved', 'rejected', 'pending'].includes(status)) {
-      return res.status(400).json({ message: 'Status must be approved, rejected, or pending' });
+    const status = (req.body.status || "").toLowerCase();
+    if (!["approved", "rejected", "pending"].includes(status)) {
+      return res
+        .status(400)
+        .json({ message: "Status must be approved, rejected, or pending" });
     }
 
     const existingResult = await pool.query(
       `SELECT *
        FROM bandwidth_requests
        WHERE id = $1`,
-      [id]
+      [id],
     );
 
     if (!existingResult.rows.length) {
-      return res.status(404).json({ message: 'Request not found' });
+      return res.status(404).json({ message: "Request not found" });
     }
 
     const existing = existingResult.rows[0];
-    const currentAdminStatus = String(existing.admin_status || 'pending').toLowerCase();
-    const currentEngineerStatus = String(existing.engineer_status || 'pending').toLowerCase();
+    const currentAdminStatus = String(
+      existing.admin_status || "pending",
+    ).toLowerCase();
+    const currentEngineerStatus = String(
+      existing.engineer_status || "pending",
+    ).toLowerCase();
 
-    if (status === 'pending') {
-      if (currentAdminStatus !== 'rejected') {
-        return res.status(400).json({ message: 'Only rejected requests can be restored to pending' });
+    if (status === "pending") {
+      if (currentAdminStatus !== "rejected") {
+        return res.status(400).json({
+          message: "Only rejected requests can be restored to pending",
+        });
       }
-      if (currentEngineerStatus === 'implemented') {
-        return res.status(400).json({ message: 'Implemented requests cannot be restored to pending' });
+      if (currentEngineerStatus === "implemented") {
+        return res.status(400).json({
+          message: "Implemented requests cannot be restored to pending",
+        });
       }
     }
 
-    const nextEngineerStatus = status === 'pending' ? 'pending' : currentEngineerStatus;
-    const nextAdminNote = Object.prototype.hasOwnProperty.call(req.body || {}, 'note')
-      ? (req.body.note || null)
+    const nextEngineerStatus =
+      status === "pending" ? "pending" : currentEngineerStatus;
+    const nextAdminNote = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "note",
+    )
+      ? req.body.note || null
       : existing.admin_note;
 
     const result = await pool.query(
@@ -2312,13 +2709,13 @@ const reviewBandwidthRequest = async (req, res) => {
            admin_note = $3
        WHERE id = $4
        RETURNING *`,
-      [status, nextEngineerStatus, nextAdminNote, id]
+      [status, nextEngineerStatus, nextAdminNote, id],
     );
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('reviewBandwidthRequest:', error);
-    res.status(500).json({ message: 'Failed to review request' });
+    console.error("reviewBandwidthRequest:", error);
+    res.status(500).json({ message: "Failed to review request" });
   }
 };
 
@@ -2327,56 +2724,74 @@ const applyApprovedRequest = async (req, res) => {
   try {
     await initialize();
     const { id } = req.params;
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
-    const reqResult = await client.query('SELECT * FROM bandwidth_requests WHERE id = $1 FOR UPDATE', [id]);
+    const reqResult = await client.query(
+      "SELECT * FROM bandwidth_requests WHERE id = $1 FOR UPDATE",
+      [id],
+    );
     if (!reqResult.rows.length) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'Request not found' });
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Request not found" });
     }
 
     const bwReq = reqResult.rows[0];
-    if ((bwReq.admin_status || 'pending') !== 'approved') {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ message: 'Only approved request can be applied' });
+    if ((bwReq.admin_status || "pending") !== "approved") {
+      await client.query("ROLLBACK");
+      return res
+        .status(400)
+        .json({ message: "Only approved request can be applied" });
     }
 
     const bwCol = normalizeBwType(bwReq.bw_type);
-    const factor = String(bwReq.change_type || '').toLowerCase() === 'decrease' ? -1 : 1;
+    const factor =
+      String(bwReq.change_type || "").toLowerCase() === "decrease" ? -1 : 1;
     const delta = factor * Math.abs(parseAmount(bwReq.amount, 0));
 
     const projectedBeforeResult = await client.query(
       `SELECT COALESCE(current_projected_bill,0)::numeric AS projected_before,
               COALESCE(previous_month_due,0)::numeric AS due_before
        FROM resellers WHERE id = $1 FOR UPDATE`,
-      [bwReq.reseller_id]
+      [bwReq.reseller_id],
     );
-    const projectedBefore = parseAmount(projectedBeforeResult.rows[0]?.projected_before, 0);
+    const projectedBefore = parseAmount(
+      projectedBeforeResult.rows[0]?.projected_before,
+      0,
+    );
     const dueBefore = parseAmount(projectedBeforeResult.rows[0]?.due_before, 0);
 
     const updateSql = `UPDATE resellers SET ${bwCol} = GREATEST(0, COALESCE(${bwCol},0) + $1), last_activity_date = NOW() WHERE id = $2 RETURNING *`;
-    const updatedReseller = await client.query(updateSql, [delta, bwReq.reseller_id]);
+    const updatedReseller = await client.query(updateSql, [
+      delta,
+      bwReq.reseller_id,
+    ]);
 
     await client.query(
       `UPDATE bandwidth_requests
        SET engineer_status = 'implemented', implementation_date = NOW(), tech_note = COALESCE($1, tech_note)
        WHERE id = $2`,
-      [req.body?.note || null, id]
+      [req.body?.note || null, id],
     );
 
     await client.query(
       `INSERT INTO billing_logs (reseller_id, request_id, change_desc, transaction_amount, effective_date, created_at)
        VALUES ($1, $2, $3, 0, NOW(), NOW())`,
-      [bwReq.reseller_id, bwReq.id, `Applied ${bwReq.change_type || 'increase'} ${bwReq.amount} on ${bwReq.bw_type || 'iig_bw'}`]
+      [
+        bwReq.reseller_id,
+        bwReq.id,
+        `Applied ${bwReq.change_type || "increase"} ${bwReq.amount} on ${bwReq.bw_type || "iig_bw"}`,
+      ],
     );
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
 
     let projectedBill = null;
     try {
-      projectedBill = await refreshProjectedBillForCurrentMonth(bwReq.reseller_id);
+      projectedBill = await refreshProjectedBillForCurrentMonth(
+        bwReq.reseller_id,
+      );
     } catch (e) {
-      console.warn('refreshProjectedBillForCurrentMonth warning:', e.message);
+      console.warn("refreshProjectedBillForCurrentMonth warning:", e.message);
     }
 
     try {
@@ -2386,12 +2801,13 @@ const applyApprovedRequest = async (req, res) => {
         reseller_id: Number(bwReq.reseller_id),
         ...actor,
         ...reqMeta,
-        action_type: 'APPLY_BW_REQUEST_FINANCIAL_IMPACT',
-        reference_table: 'bandwidth_requests',
+        action_type: "APPLY_BW_REQUEST_FINANCIAL_IMPACT",
+        reference_table: "bandwidth_requests",
         reference_id: Number(bwReq.id),
         amount_before: projectedBefore,
         amount_after: parseAmount(projectedBill, projectedBefore),
-        amount_delta: parseAmount(projectedBill, projectedBefore) - projectedBefore,
+        amount_delta:
+          parseAmount(projectedBill, projectedBefore) - projectedBefore,
         due_before: dueBefore,
         due_after: dueBefore,
         due_delta: 0,
@@ -2405,14 +2821,18 @@ const applyApprovedRequest = async (req, res) => {
         request_payload: req.body || {},
       });
     } catch (auditErr) {
-      console.warn('applyApprovedRequest audit warning:', auditErr.message);
+      console.warn("applyApprovedRequest audit warning:", auditErr.message);
     }
 
-    res.json({ message: 'Request applied successfully', reseller: updatedReseller.rows[0], projected_bill: projectedBill });
+    res.json({
+      message: "Request applied successfully",
+      reseller: updatedReseller.rows[0],
+      projected_bill: projectedBill,
+    });
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('applyApprovedRequest:', error);
-    res.status(500).json({ message: 'Failed to apply request' });
+    await client.query("ROLLBACK");
+    console.error("applyApprovedRequest:", error);
+    res.status(500).json({ message: "Failed to apply request" });
   } finally {
     client.release();
   }
@@ -2423,11 +2843,11 @@ const getBillingLogs = async (req, res) => {
     await initialize();
     const resellerId = req.query.reseller_id;
     const params = [];
-    let where = '';
+    let where = "";
 
     if (resellerId) {
       params.push(resellerId);
-      where = 'WHERE bl.reseller_id = $1';
+      where = "WHERE bl.reseller_id = $1";
     }
 
     const result = await pool.query(
@@ -2453,26 +2873,28 @@ const getBillingLogs = async (req, res) => {
        ${where}
        ORDER BY bl.id DESC
        LIMIT 500`,
-      params
+      params,
     );
 
     res.json(result.rows);
   } catch (error) {
-    console.error('getBillingLogs:', error);
-    res.status(500).json({ message: 'Failed to load billing logs' });
+    console.error("getBillingLogs:", error);
+    res.status(500).json({ message: "Failed to load billing logs" });
   }
 };
 
 const getPartnerSheetList = async (req, res) => {
   try {
-    const tab = String(req.query.tab || '').trim().toLowerCase();
+    const tab = String(req.query.tab || "")
+      .trim()
+      .toLowerCase();
     const config = PARTNER_SHEET_CONFIG[tab];
 
     if (!config) {
-      return res.status(400).json({ message: 'Invalid partner tab' });
+      return res.status(400).json({ message: "Invalid partner tab" });
     }
 
-    res.set('Cache-Control', 'private, max-age=10, must-revalidate');
+    res.set("Cache-Control", "private, max-age=10, must-revalidate");
 
     const cached = await readPartnerSheetSnapshot(tab);
     if (cached) {
@@ -2483,16 +2905,16 @@ const getPartnerSheetList = async (req, res) => {
         rows: Array.isArray(cached.rows) ? cached.rows : [],
         row_count: Array.isArray(cached.rows) ? cached.rows.length : 0,
         fetched_at: cached.updated_at,
-        source: 'webhook-cache'
+        source: "webhook-cache",
       });
     }
 
-    const sheetUrl = String(process.env[config.envKey] || '').trim();
+    const sheetUrl = String(process.env[config.envKey] || "").trim();
     if (!sheetUrl) {
       return res.status(503).json({
         message: `${config.title} sheet has no cached snapshot yet and no CSV fallback is configured`,
         env_key: config.envKey,
-        hint: 'Send a webhook sync first or configure the CSV URL fallback'
+        hint: "Send a webhook sync first or configure the CSV URL fallback",
       });
     }
 
@@ -2508,11 +2930,11 @@ const getPartnerSheetList = async (req, res) => {
       rows,
       row_count: rows.length,
       fetched_at: new Date().toISOString(),
-      source: 'csv-fallback'
+      source: "csv-fallback",
     });
   } catch (error) {
-    console.error('getPartnerSheetList:', error);
-    res.status(500).json({ message: 'Failed to load partner sheet data' });
+    console.error("getPartnerSheetList:", error);
+    res.status(500).json({ message: "Failed to load partner sheet data" });
   }
 };
 
@@ -2520,27 +2942,33 @@ const ingestPartnerSheetWebhook = async (req, res) => {
   try {
     await initialize();
     if (!GOOGLE_SHEETS_WEBHOOK_TOKEN) {
-      return res.status(503).json({ message: 'Webhook token is not configured' });
+      return res
+        .status(503)
+        .json({ message: "Webhook token is not configured" });
     }
 
-    const token = String(req.headers['x-webhook-token'] || req.body?.token || '').trim();
+    const token = String(
+      req.headers["x-webhook-token"] || req.body?.token || "",
+    ).trim();
     if (!token || token !== GOOGLE_SHEETS_WEBHOOK_TOKEN) {
-      return res.status(401).json({ message: 'Invalid webhook token' });
+      return res.status(401).json({ message: "Invalid webhook token" });
     }
 
     const tab = normalizePartnerSheetTab(req.body?.tab);
     if (!tab) {
-      return res.status(400).json({ message: 'Valid tab is required' });
+      return res.status(400).json({ message: "Valid tab is required" });
     }
 
-    const title = String(req.body?.title || PARTNER_SHEET_CONFIG[tab].title).trim();
+    const title = String(
+      req.body?.title || PARTNER_SHEET_CONFIG[tab].title,
+    ).trim();
     const headers = Array.isArray(req.body?.headers) ? req.body.headers : [];
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     const sourceMeta = {
-      spreadsheet_id: String(req.body?.spreadsheet_id || '').trim(),
-      sheet_name: String(req.body?.sheet_name || '').trim(),
-      updated_at: String(req.body?.updated_at || '').trim(),
-      row_count: rows.length
+      spreadsheet_id: String(req.body?.spreadsheet_id || "").trim(),
+      sheet_name: String(req.body?.sheet_name || "").trim(),
+      updated_at: String(req.body?.updated_at || "").trim(),
+      row_count: rows.length,
     };
 
     const snapshot = await upsertPartnerSheetSnapshot({
@@ -2548,35 +2976,51 @@ const ingestPartnerSheetWebhook = async (req, res) => {
       title,
       headers,
       rows,
-      sourceMeta
+      sourceMeta,
     });
 
     res.json({
-      message: 'Partner sheet synced',
+      message: "Partner sheet synced",
       tab: snapshot.tab,
       title: snapshot.title,
       row_count: snapshot.rows.length,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('ingestPartnerSheetWebhook:', error);
-    res.status(500).json({ message: 'Failed to ingest partner sheet webhook' });
+    console.error("ingestPartnerSheetWebhook:", error);
+    res.status(500).json({ message: "Failed to ingest partner sheet webhook" });
   }
 };
 
 const getFinancialAuditLogs = async (req, res) => {
   try {
     await initialize();
-    const role = String(req.user?.role_name || req.user?.role || '').toLowerCase();
+    const role = String(
+      req.user?.role_name || req.user?.role || "",
+    ).toLowerCase();
     const perms = req.user?.permissions || {};
-    const isAdmin = role === 'admin' || role === 'super admin' || role === 'superadmin' || !!perms.all_access;
-    const canViewFinancials = isAdmin || !!(req.user?.p_reseller_list || perms.p_reseller_list || req.user?.p_billing_logs || perms.p_billing_logs);
+    const isAdmin =
+      role === "admin" ||
+      role === "super admin" ||
+      role === "superadmin" ||
+      !!perms.all_access;
+    const canViewFinancials =
+      isAdmin ||
+      !!(
+        req.user?.p_reseller_list ||
+        perms.p_reseller_list ||
+        req.user?.p_billing_logs ||
+        perms.p_billing_logs
+      );
     if (!canViewFinancials) {
-      return res.status(403).json({ message: 'Access denied' });
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 50, 1), 200);
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query.limit, 10) || 50, 1),
+      200,
+    );
     const offset = (page - 1) * limit;
 
     const where = [];
@@ -2599,11 +3043,11 @@ const getFinancialAuditLogs = async (req, res) => {
       where.push(`l.created_at <= $${params.length}::timestamptz`);
     }
 
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
     const countResult = await pool.query(
       `SELECT COUNT(*)::int AS total FROM reseller_financial_audit_logs l ${whereSql}`,
-      params
+      params,
     );
 
     const queryParams = [...params, limit, offset];
@@ -2617,7 +3061,7 @@ const getFinancialAuditLogs = async (req, res) => {
        ORDER BY l.id DESC
        LIMIT $${queryParams.length - 1}
        OFFSET $${queryParams.length}`,
-      queryParams
+      queryParams,
     );
 
     res.json({
@@ -2628,8 +3072,8 @@ const getFinancialAuditLogs = async (req, res) => {
       rows: dataResult.rows,
     });
   } catch (error) {
-    console.error('getFinancialAuditLogs:', error);
-    res.status(500).json({ message: 'Failed to load financial audit logs' });
+    console.error("getFinancialAuditLogs:", error);
+    res.status(500).json({ message: "Failed to load financial audit logs" });
   }
 };
 
@@ -2647,7 +3091,7 @@ const getCreditedAmountForMonth = async (client, resellerId, monthYm) => {
            ELSE 'adjustment'
          END
        ) IN ('payment','discount')`,
-    [resellerId, monthYm]
+    [resellerId, monthYm],
   );
   return parseAmount(creditedResult.rows[0]?.credited, 0);
 };
@@ -2660,17 +3104,21 @@ const finalizeResellerBill = async (client, params) => {
     adjustmentNote = null,
     actor,
     reqMeta,
-    source = 'manual',
+    source = "manual",
     requestPayload = {},
   } = params;
 
   const billDate = monthStartDateFromYm(monthYm);
   const existingBill = await client.query(
     `SELECT id FROM monthly_bills WHERE reseller_id = $1 AND bill_month = $2::date LIMIT 1`,
-    [resellerId, billDate]
+    [resellerId, billDate],
   );
   if (existingBill.rows.length) {
-    return { status: 'already_finalized', bill_id: existingBill.rows[0].id, month: billDate };
+    return {
+      status: "already_finalized",
+      bill_id: existingBill.rows[0].id,
+      month: billDate,
+    };
   }
 
   const resellerResult = await client.query(
@@ -2695,36 +3143,49 @@ const finalizeResellerBill = async (client, params) => {
      FROM resellers
      WHERE id = $1
      FOR UPDATE`,
-    [resellerId]
+    [resellerId],
   );
   if (!resellerResult.rows.length) {
-    return { status: 'not_found', message: 'Reseller not found' };
+    return { status: "not_found", message: "Reseller not found" };
   }
   const reseller = resellerResult.rows[0];
 
   const createdDate = parseYMD(reseller.joining_date || reseller.created_at);
   const createdMonthYm = createdDate
-    ? `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, '0')}`
+    ? `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`
     : null;
   if (!createdMonthYm) {
-    return { status: 'invalid_joining_date', message: 'Invalid reseller joining date' };
+    return {
+      status: "invalid_joining_date",
+      message: "Invalid reseller joining date",
+    };
   }
   if (monthYm < createdMonthYm) {
-    return { status: 'invalid_month', message: 'Cannot generate bill before reseller join month' };
+    return {
+      status: "invalid_month",
+      message: "Cannot generate bill before reseller join month",
+    };
   }
 
   if (monthYm > createdMonthYm) {
     const prevYm = previousMonthYm(monthYm);
     const prevMonthResult = await client.query(
       `SELECT id FROM monthly_bills WHERE reseller_id = $1 AND bill_month = $2::date LIMIT 1`,
-      [resellerId, monthStartDateFromYm(prevYm)]
+      [resellerId, monthStartDateFromYm(prevYm)],
     );
     if (!prevMonthResult.rows.length) {
-      return { status: 'previous_month_missing', message: `Previous month bill (${prevYm}) not finalized` };
+      return {
+        status: "previous_month_missing",
+        message: `Previous month bill (${prevYm}) not finalized`,
+      };
     }
   }
 
-  const breakdown = await calculateMonthlyBillBreakdown(resellerId, monthYm, reseller);
+  const breakdown = await calculateMonthlyBillBreakdown(
+    resellerId,
+    monthYm,
+    reseller,
+  );
   const amount = parseAmount(breakdown.total, 0);
   const credited = await getCreditedAmountForMonth(client, resellerId, monthYm);
   const prevDue = parseAmount(reseller.previous_month_due, 0);
@@ -2737,15 +3198,27 @@ const finalizeResellerBill = async (client, params) => {
      ON CONFLICT (reseller_id, bill_month)
      DO NOTHING
      RETURNING id`,
-    [resellerId, billDate, amount, adj, adjNote, JSON.stringify(breakdown.items || []), prevDue]
+    [
+      resellerId,
+      billDate,
+      amount,
+      adj,
+      adjNote,
+      JSON.stringify(breakdown.items || []),
+      prevDue,
+    ],
   );
 
   if (!insertResult.rows.length) {
     const existingAfterInsert = await client.query(
       `SELECT id FROM monthly_bills WHERE reseller_id = $1 AND bill_month = $2::date LIMIT 1`,
-      [resellerId, billDate]
+      [resellerId, billDate],
     );
-    return { status: 'already_finalized', bill_id: existingAfterInsert.rows[0]?.id || null, month: billDate };
+    return {
+      status: "already_finalized",
+      bill_id: existingAfterInsert.rows[0]?.id || null,
+      month: billDate,
+    };
   }
 
   const billId = insertResult.rows[0].id;
@@ -2753,10 +3226,15 @@ const finalizeResellerBill = async (client, params) => {
   let nextProjected = 0;
   try {
     const nextMonth = nextMonthYm(monthYm);
-    const nextBreakdown = await calculateMonthlyBillBreakdown(resellerId, nextMonth, reseller);
+    const nextBreakdown = await calculateMonthlyBillBreakdown(
+      resellerId,
+      nextMonth,
+      reseller,
+    );
     nextProjected = Math.round(parseAmount(nextBreakdown.total, 0) * 100) / 100;
   } catch (e) {
-    nextProjected = Math.round(parseAmount(reseller.current_projected_bill, 0) * 100) / 100;
+    nextProjected =
+      Math.round(parseAmount(reseller.current_projected_bill, 0) * 100) / 100;
   }
   await client.query(
     `UPDATE resellers
@@ -2764,15 +3242,18 @@ const finalizeResellerBill = async (client, params) => {
          current_projected_bill = $2,
          last_activity_date = NOW()
      WHERE id = $3`,
-    [newDue, nextProjected, resellerId]
+    [newDue, nextProjected, resellerId],
   );
 
   await logResellerFinancialChange(client, {
     reseller_id: Number(resellerId),
     ...actor,
     ...reqMeta,
-    action_type: source === 'auto' ? 'AUTO_FINALIZE_MONTHLY_BILL' : 'FINALIZE_MONTHLY_BILL',
-    reference_table: 'monthly_bills',
+    action_type:
+      source === "auto"
+        ? "AUTO_FINALIZE_MONTHLY_BILL"
+        : "FINALIZE_MONTHLY_BILL",
+    reference_table: "monthly_bills",
     reference_id: billId,
     amount_before: 0,
     amount_after: amount + adj,
@@ -2787,14 +3268,17 @@ const finalizeResellerBill = async (client, params) => {
       paid_this_month: credited,
       source,
     },
-    note: source === 'auto' ? 'Auto final invoice generated' : 'Final invoice generated',
+    note:
+      source === "auto"
+        ? "Auto final invoice generated"
+        : "Final invoice generated",
     request_payload: requestPayload,
   });
 
   invalidateMonthlySummaryCache(monthYm);
 
   return {
-    status: 'finalized',
+    status: "finalized",
     bill_id: billId,
     month: billDate,
     amount,
@@ -2810,25 +3294,30 @@ const addBillingLog = async (req, res) => {
     await initialize();
     const { reseller_id, log_type, amount, note, effective_date } = req.body;
     if (!reseller_id) {
-      return res.status(400).json({ message: 'reseller_id is required' });
+      return res.status(400).json({ message: "reseller_id is required" });
     }
 
-    const normalizedType = String(log_type || 'payment').trim().toLowerCase();
+    const normalizedType = String(log_type || "payment")
+      .trim()
+      .toLowerCase();
     const parsedAmount = parseAmount(amount, 0);
-    if (!['payment', 'discount', 'adjustment'].includes(normalizedType)) {
-      return res.status(400).json({ message: 'Invalid log_type' });
+    if (!["payment", "discount", "adjustment"].includes(normalizedType)) {
+      return res.status(400).json({ message: "Invalid log_type" });
     }
-    if ((normalizedType === 'payment' || normalizedType === 'discount') && parsedAmount <= 0) {
-      return res.status(400).json({ message: 'amount must be greater than 0' });
+    if (
+      (normalizedType === "payment" || normalizedType === "discount") &&
+      parsedAmount <= 0
+    ) {
+      return res.status(400).json({ message: "amount must be greater than 0" });
     }
     const effDate = effective_date || new Date().toISOString();
-    await client.query('BEGIN');
+    await client.query("BEGIN");
     const actor = getActor(req);
     const reqMeta = getReqMeta(req);
 
     const dueBeforeResult = await client.query(
       `SELECT COALESCE(previous_month_due,0)::numeric AS due FROM resellers WHERE id = $1 FOR UPDATE`,
-      [reseller_id]
+      [reseller_id],
     );
     const dueBefore = parseAmount(dueBeforeResult.rows[0]?.due, 0);
 
@@ -2839,7 +3328,7 @@ const addBillingLog = async (req, res) => {
         WHERE table_schema = 'public'
           AND table_name = 'billing_logs'
           AND column_name = 'log_type'
-      ) AS has_log_type`
+      ) AS has_log_type`,
     );
     const hasLogTypeColumn = !!hasLogTypeResult.rows[0]?.has_log_type;
 
@@ -2847,20 +3336,29 @@ const addBillingLog = async (req, res) => {
       ? await client.query(
           `INSERT INTO billing_logs (reseller_id, request_id, log_type, change_desc, transaction_amount, effective_date, created_at)
            VALUES ($1, NULL, $2, $3, $4, $5, NOW()) RETURNING *`,
-          [reseller_id, normalizedType, note || normalizedType, parsedAmount, effDate]
+          [
+            reseller_id,
+            normalizedType,
+            note || normalizedType,
+            parsedAmount,
+            effDate,
+          ],
         )
       : await client.query(
           `INSERT INTO billing_logs (reseller_id, request_id, change_desc, transaction_amount, effective_date, created_at)
            VALUES ($1, NULL, $2, $3, $4, NOW()) RETURNING *`,
-          [reseller_id, note || normalizedType, parsedAmount, effDate]
+          [reseller_id, note || normalizedType, parsedAmount, effDate],
         );
 
     await logResellerFinancialChange(client, {
       reseller_id: Number(reseller_id),
       ...actor,
       ...reqMeta,
-      action_type: normalizedType === 'discount' ? 'ADD_BILLING_DISCOUNT_ENTRY' : 'ADD_BILLING_LOG_ENTRY',
-      reference_table: 'billing_logs',
+      action_type:
+        normalizedType === "discount"
+          ? "ADD_BILLING_DISCOUNT_ENTRY"
+          : "ADD_BILLING_LOG_ENTRY",
+      reference_table: "billing_logs",
       reference_id: result.rows[0]?.id || null,
       amount_before: 0,
       amount_after: parsedAmount,
@@ -2876,13 +3374,13 @@ const addBillingLog = async (req, res) => {
       request_payload: { reseller_id, log_type, amount, effective_date },
     });
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     invalidateMonthlySummaryCache(extractYm(effDate));
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('addBillingLog:', error);
-    res.status(500).json({ message: 'Failed to add billing log' });
+    await client.query("ROLLBACK");
+    console.error("addBillingLog:", error);
+    res.status(500).json({ message: "Failed to add billing log" });
   } finally {
     client.release();
   }
@@ -2897,13 +3395,15 @@ const getMonthlySummary = async (req, res) => {
     const cached = getMonthlySummaryCached(selectedMonth);
     if (cached) {
       const elapsedMs = Date.now() - startedAt;
-      console.log(`[MonthlySummary] month=${selectedMonth} row_count=${cached.rows?.length || 0} cache_hit=true monthly_summary_ms=${elapsedMs}`);
+      console.log(
+        `[MonthlySummary] month=${selectedMonth} row_count=${cached.rows?.length || 0} cache_hit=true monthly_summary_ms=${elapsedMs}`,
+      );
       return res.json({
         ...cached,
         meta: {
           generated_at: new Date().toISOString(),
-          cache_hit: true
-        }
+          cache_hit: true,
+        },
       });
     }
 
@@ -3000,7 +3500,7 @@ const getMonthlySummary = async (req, res) => {
        LEFT JOIN latest_bills lb ON lb.reseller_id = ar.id
        LEFT JOIN month_logs ml ON ml.reseller_id = ar.id
        ORDER BY ar.name ASC`,
-      [monthStart, selectedMonth]
+      [monthStart, selectedMonth],
     );
 
     let rows = dataResult.rows.map((r) => ({
@@ -3015,7 +3515,7 @@ const getMonthlySummary = async (req, res) => {
       discount: Math.round(parseAmount(r.discount, 0) * 100) / 100,
       new_due: Math.round(parseAmount(r.new_due, 0) * 100) / 100,
       next_pay_date: r.next_pay_date,
-      is_generated: Boolean(r.is_generated)
+      is_generated: Boolean(r.is_generated),
     }));
 
     // Recalculate projected for all non-finalized rows so monthly summary stays consistent
@@ -3025,22 +3525,28 @@ const getMonthlySummary = async (req, res) => {
       const fallbackResults = await Promise.all(
         fallbackCandidates.map(async (row) => {
           try {
-            const breakdown = await calculateMonthlyBillBreakdown(row.id, selectedMonth);
+            const breakdown = await calculateMonthlyBillBreakdown(
+              row.id,
+              selectedMonth,
+            );
             return {
               id: row.id,
-              projected: Math.round(parseAmount(breakdown.total, 0) * 100) / 100
+              projected:
+                Math.round(parseAmount(breakdown.total, 0) * 100) / 100,
             };
           } catch (err) {
-            console.warn(`[MonthlySummary] fallback breakdown failed for reseller=${row.id} month=${selectedMonth}: ${err.message}`);
+            console.warn(
+              `[MonthlySummary] fallback breakdown failed for reseller=${row.id} month=${selectedMonth}: ${err.message}`,
+            );
             return null;
           }
-        })
+        }),
       );
 
       const projectedById = new Map(
         fallbackResults
           .filter((item) => item && parseAmount(item.projected, 0) > 0)
-          .map((item) => [Number(item.id), Number(item.projected)])
+          .map((item) => [Number(item.id), Number(item.projected)]),
       );
 
       if (projectedById.size > 0) {
@@ -3058,7 +3564,7 @@ const getMonthlySummary = async (req, res) => {
             ...row,
             projected: Math.round(projectedFallback * 100) / 100,
             total_bill: Math.round(totalBill * 100) / 100,
-            new_due: Math.round(newDue * 100) / 100
+            new_due: Math.round(newDue * 100) / 100,
           };
         });
       }
@@ -3069,9 +3575,9 @@ const getMonthlySummary = async (req, res) => {
         projected: acc.projected + parseAmount(row.projected, 0),
         paid: acc.paid + parseAmount(row.paid, 0),
         discount: acc.discount + parseAmount(row.discount, 0),
-        due: acc.due + parseAmount(row.new_due, 0)
+        due: acc.due + parseAmount(row.new_due, 0),
       }),
-      { projected: 0, paid: 0, discount: 0, due: 0 }
+      { projected: 0, paid: 0, discount: 0, due: 0 },
     );
 
     const payload = {
@@ -3080,30 +3586,34 @@ const getMonthlySummary = async (req, res) => {
         projected: Math.round(totals.projected * 100) / 100,
         paid: Math.round(totals.paid * 100) / 100,
         discount: Math.round(totals.discount * 100) / 100,
-        due: Math.round(totals.due * 100) / 100
+        due: Math.round(totals.due * 100) / 100,
       },
-      rows
+      rows,
     };
     setMonthlySummaryCached(selectedMonth, payload);
 
     const elapsedMs = Date.now() - startedAt;
     const warnThreshold = isProdEnv ? 2000 : 5000;
     if (elapsedMs > warnThreshold) {
-      console.warn(`[MonthlySummary] month=${selectedMonth} row_count=${rows.length} cache_hit=false monthly_summary_ms=${elapsedMs}`);
+      console.warn(
+        `[MonthlySummary] month=${selectedMonth} row_count=${rows.length} cache_hit=false monthly_summary_ms=${elapsedMs}`,
+      );
     } else {
-      console.log(`[MonthlySummary] month=${selectedMonth} row_count=${rows.length} cache_hit=false monthly_summary_ms=${elapsedMs}`);
+      console.log(
+        `[MonthlySummary] month=${selectedMonth} row_count=${rows.length} cache_hit=false monthly_summary_ms=${elapsedMs}`,
+      );
     }
 
     res.json({
       ...payload,
       meta: {
         generated_at: new Date().toISOString(),
-        cache_hit: false
-      }
+        cache_hit: false,
+      },
     });
   } catch (error) {
-    console.error('getMonthlySummary:', error);
-    res.status(500).json({ message: 'Failed to load monthly summary' });
+    console.error("getMonthlySummary:", error);
+    res.status(500).json({ message: "Failed to load monthly summary" });
   }
 };
 
@@ -3111,9 +3621,10 @@ const updateMonthlySummaryPayDate = async (req, res) => {
   try {
     await initialize();
     const resellerId = Number(req.body.reseller_id || req.body.id || 0);
-    if (!resellerId) return res.status(400).json({ message: 'reseller_id is required' });
+    if (!resellerId)
+      return res.status(400).json({ message: "reseller_id is required" });
 
-    const rawDate = (req.body.date || '').trim();
+    const rawDate = (req.body.date || "").trim();
     const nextPayDate = rawDate || null;
 
     const result = await pool.query(
@@ -3121,18 +3632,18 @@ const updateMonthlySummaryPayDate = async (req, res) => {
        SET next_pay_date = $1
        WHERE id = $2
        RETURNING id, next_pay_date`,
-      [nextPayDate, resellerId]
+      [nextPayDate, resellerId],
     );
 
     if (!result.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
 
     invalidateMonthlySummaryCache();
-    res.json({ message: 'success', row: result.rows[0] });
+    res.json({ message: "success", row: result.rows[0] });
   } catch (error) {
-    console.error('updateMonthlySummaryPayDate:', error);
-    res.status(500).json({ message: 'Failed to update pay date' });
+    console.error("updateMonthlySummaryPayDate:", error);
+    res.status(500).json({ message: "Failed to update pay date" });
   }
 };
 
@@ -3141,14 +3652,18 @@ const generateMonthlyBills = async (req, res) => {
     await initialize();
     if (MANUAL_BILLING_DISABLED) {
       return res.status(410).json({
-        code: 'manual_generation_disabled',
-        message: 'Manual bill generation is disabled. Monthly finalization runs automatically at month end.',
+        code: "manual_generation_disabled",
+        message:
+          "Manual bill generation is disabled. Monthly finalization runs automatically at month end.",
       });
     }
-    return res.status(400).json({ message: 'Manual generation is deprecated. Use internal automation endpoint.' });
+    return res.status(400).json({
+      message:
+        "Manual generation is deprecated. Use internal automation endpoint.",
+    });
   } catch (error) {
-    console.error('generateMonthlyBills:', error);
-    res.status(500).json({ message: 'Failed to generate monthly bills' });
+    console.error("generateMonthlyBills:", error);
+    res.status(500).json({ message: "Failed to generate monthly bills" });
   }
 };
 
@@ -3157,18 +3672,28 @@ const finalizeInvoice = async (req, res) => {
     await initialize();
     if (MANUAL_BILLING_DISABLED) {
       return res.status(410).json({
-        code: 'manual_finalization_disabled',
-        message: 'Manual final bill generation is disabled. Monthly finalization runs automatically at month end.',
+        code: "manual_finalization_disabled",
+        message:
+          "Manual final bill generation is disabled. Monthly finalization runs automatically at month end.",
       });
     }
-    return res.status(400).json({ message: 'Manual finalization is deprecated. Use internal automation endpoint.' });
+    return res.status(400).json({
+      message:
+        "Manual finalization is deprecated. Use internal automation endpoint.",
+    });
   } catch (error) {
-    console.error('finalizeInvoice:', error);
-    res.status(500).json({ message: 'Failed to generate final bill' });
+    console.error("finalizeInvoice:", error);
+    res.status(500).json({ message: "Failed to generate final bill" });
   }
 };
 
-const runAutoFinalizeMonth = async ({ monthYm, initiator = 'system', source = 'scheduler', actor = null, reqMeta = null }) => {
+const runAutoFinalizeMonth = async ({
+  monthYm,
+  initiator = "system",
+  source = "scheduler",
+  actor = null,
+  reqMeta = null,
+}) => {
   const client = await pool.connect();
   const summary = {
     run_id: null,
@@ -3183,7 +3708,10 @@ const runAutoFinalizeMonth = async ({ monthYm, initiator = 'system', source = 's
   try {
     await initialize();
 
-    const lockResult = await client.query(`SELECT pg_try_advisory_lock(hashtext($1)) AS locked`, [`billing-auto-finalize:${monthYm}`]);
+    const lockResult = await client.query(
+      `SELECT pg_try_advisory_lock(hashtext($1)) AS locked`,
+      [`billing-auto-finalize:${monthYm}`],
+    );
     if (!lockResult.rows[0]?.locked) {
       throw new Error(`Another auto-finalize process is active for ${monthYm}`);
     }
@@ -3194,18 +3722,18 @@ const runAutoFinalizeMonth = async ({ monthYm, initiator = 'system', source = 's
        WHERE run_month = $1::date AND status = 'completed'
        ORDER BY id DESC
        LIMIT 1`,
-      [monthStartDateFromYm(monthYm)]
+      [monthStartDateFromYm(monthYm)],
     );
     if (completedRun.rows.length) {
       summary.run_id = completedRun.rows[0].id;
-      return { ...summary, status: 'already_completed' };
+      return { ...summary, status: "already_completed" };
     }
 
     const runInsert = await client.query(
       `INSERT INTO billing_finalize_runs (run_month, status, initiator, source, started_at)
        VALUES ($1::date, 'running', $2, $3, NOW())
        RETURNING id`,
-      [monthStartDateFromYm(monthYm), initiator, source]
+      [monthStartDateFromYm(monthYm), initiator, source],
     );
     summary.run_id = runInsert.rows[0].id;
 
@@ -3213,59 +3741,82 @@ const runAutoFinalizeMonth = async ({ monthYm, initiator = 'system', source = 's
       `SELECT id
        FROM resellers
        WHERE LOWER(COALESCE(status, 'active')) = 'active'
-       ORDER BY id ASC`
+       ORDER BY id ASC`,
     );
 
-    for (let i = 0; i < activeResellers.rows.length; i += AUTO_FINALIZE_DEFAULT_BATCH) {
-      const chunk = activeResellers.rows.slice(i, i + AUTO_FINALIZE_DEFAULT_BATCH);
+    for (
+      let i = 0;
+      i < activeResellers.rows.length;
+      i += AUTO_FINALIZE_DEFAULT_BATCH
+    ) {
+      const chunk = activeResellers.rows.slice(
+        i,
+        i + AUTO_FINALIZE_DEFAULT_BATCH,
+      );
       for (const row of chunk) {
         summary.processed_count += 1;
         try {
-          await client.query('BEGIN');
+          await client.query("BEGIN");
           const result = await finalizeResellerBill(client, {
             resellerId: row.id,
             monthYm,
             adjustment: 0,
             adjustmentNote: null,
-            actor: actor || { actor_user_id: null, actor_user_name: initiator, actor_role: source },
+            actor: actor || {
+              actor_user_id: null,
+              actor_user_name: initiator,
+              actor_role: source,
+            },
             reqMeta: reqMeta || {},
-            source: 'auto',
+            source: "auto",
             requestPayload: { month: monthYm, source },
           });
 
-          if (result.status === 'finalized') {
+          if (result.status === "finalized") {
             summary.success_count += 1;
             await client.query(
               `INSERT INTO billing_finalize_run_items (run_id, reseller_id, status, bill_id, message)
                VALUES ($1, $2, $3, $4, $5)`,
-              [summary.run_id, row.id, 'success', result.bill_id, 'Finalized']
+              [summary.run_id, row.id, "success", result.bill_id, "Finalized"],
             );
-          } else if (result.status === 'already_finalized') {
+          } else if (result.status === "already_finalized") {
             summary.already_count += 1;
             await client.query(
               `INSERT INTO billing_finalize_run_items (run_id, reseller_id, status, bill_id, message)
                VALUES ($1, $2, $3, $4, $5)`,
-              [summary.run_id, row.id, 'already', result.bill_id || null, result.message || 'Already finalized']
+              [
+                summary.run_id,
+                row.id,
+                "already",
+                result.bill_id || null,
+                result.message || "Already finalized",
+              ],
             );
           } else {
             summary.failed_count += 1;
-            const failMessage = result.message || result.status || 'Failed';
-            summary.failures.push({ reseller_id: row.id, message: failMessage });
+            const failMessage = result.message || result.status || "Failed";
+            summary.failures.push({
+              reseller_id: row.id,
+              message: failMessage,
+            });
             await client.query(
               `INSERT INTO billing_finalize_run_items (run_id, reseller_id, status, bill_id, message)
                VALUES ($1, $2, $3, NULL, $4)`,
-              [summary.run_id, row.id, 'failed', failMessage]
+              [summary.run_id, row.id, "failed", failMessage],
             );
           }
-          await client.query('COMMIT');
+          await client.query("COMMIT");
         } catch (itemError) {
-          await client.query('ROLLBACK');
+          await client.query("ROLLBACK");
           summary.failed_count += 1;
-          summary.failures.push({ reseller_id: row.id, message: itemError.message });
+          summary.failures.push({
+            reseller_id: row.id,
+            message: itemError.message,
+          });
           await client.query(
             `INSERT INTO billing_finalize_run_items (run_id, reseller_id, status, bill_id, message)
              VALUES ($1, $2, $3, NULL, $4)`,
-            [summary.run_id, row.id, 'failed', itemError.message]
+            [summary.run_id, row.id, "failed", itemError.message],
           );
         }
       }
@@ -3282,18 +3833,22 @@ const runAutoFinalizeMonth = async ({ monthYm, initiator = 'system', source = 's
        WHERE id = $1`,
       [
         summary.run_id,
-        summary.failed_count > 0 ? 'partial' : 'completed',
+        summary.failed_count > 0 ? "partial" : "completed",
         summary.processed_count,
         summary.success_count,
         summary.failed_count,
-        summary.failures.length ? JSON.stringify(summary.failures.slice(0, 20)) : null,
-      ]
+        summary.failures.length
+          ? JSON.stringify(summary.failures.slice(0, 20))
+          : null,
+      ],
     );
 
     return summary;
   } finally {
     try {
-      await client.query(`SELECT pg_advisory_unlock(hashtext($1))`, [`billing-auto-finalize:${monthYm}`]);
+      await client.query(`SELECT pg_advisory_unlock(hashtext($1))`, [
+        `billing-auto-finalize:${monthYm}`,
+      ]);
     } catch (_) {
       // ignore unlock errors
     }
@@ -3305,24 +3860,38 @@ const internalAutoFinalize = async (req, res) => {
   try {
     await initialize();
     if (!INTERNAL_AUTOMATION_TOKEN) {
-      return res.status(503).json({ message: 'Internal automation token is not configured' });
+      return res
+        .status(503)
+        .json({ message: "Internal automation token is not configured" });
     }
-    const token = String(req.headers['x-internal-token'] || '').trim();
+    const token = String(req.headers["x-internal-token"] || "").trim();
     if (!token || token !== INTERNAL_AUTOMATION_TOKEN) {
-      return res.status(401).json({ message: 'Invalid internal token' });
+      return res.status(401).json({ message: "Invalid internal token" });
     }
     if (!isInternalLocalRequest(req)) {
-      return res.status(403).json({ message: 'Only localhost requests are allowed' });
+      return res
+        .status(403)
+        .json({ message: "Only localhost requests are allowed" });
     }
 
-    const requestedMonth = normalizeMonthYm(req.body?.month || req.query?.month);
+    const requestedMonth = normalizeMonthYm(
+      req.body?.month || req.query?.month,
+    );
     const monthYm = requestedMonth || getDefaultAutoFinalizeMonthYm();
     const summary = await runAutoFinalizeMonth({
       monthYm,
-      initiator: 'internal-api',
-      source: 'scheduler',
-      actor: { actor_user_id: null, actor_user_name: 'system', actor_role: 'system' },
-      reqMeta: { ip_address: req.ip || null, user_agent: req.headers['user-agent'] || null, request_id: null },
+      initiator: "internal-api",
+      source: "scheduler",
+      actor: {
+        actor_user_id: null,
+        actor_user_name: "system",
+        actor_role: "system",
+      },
+      reqMeta: {
+        ip_address: req.ip || null,
+        user_agent: req.headers["user-agent"] || null,
+        request_id: null,
+      },
     });
 
     res.json({
@@ -3335,8 +3904,10 @@ const internalAutoFinalize = async (req, res) => {
       failures: summary.failures.slice(0, 10),
     });
   } catch (error) {
-    console.error('internalAutoFinalize:', error);
-    res.status(500).json({ message: 'Auto finalize failed', error: error.message });
+    console.error("internalAutoFinalize:", error);
+    res
+      .status(500)
+      .json({ message: "Auto finalize failed", error: error.message });
   }
 };
 
@@ -3344,27 +3915,32 @@ const internalAutoFinalizeStatus = async (req, res) => {
   try {
     await initialize();
     if (!INTERNAL_AUTOMATION_TOKEN) {
-      return res.status(503).json({ message: 'Internal automation token is not configured' });
+      return res
+        .status(503)
+        .json({ message: "Internal automation token is not configured" });
     }
-    const token = String(req.headers['x-internal-token'] || '').trim();
+    const token = String(req.headers["x-internal-token"] || "").trim();
     if (!token || token !== INTERNAL_AUTOMATION_TOKEN) {
-      return res.status(401).json({ message: 'Invalid internal token' });
+      return res.status(401).json({ message: "Invalid internal token" });
     }
     if (!isInternalLocalRequest(req)) {
-      return res.status(403).json({ message: 'Only localhost requests are allowed' });
+      return res
+        .status(403)
+        .json({ message: "Only localhost requests are allowed" });
     }
 
     const runId = Number(req.query?.run_id || req.params?.runId || 0);
-    if (!runId) return res.status(400).json({ message: 'run_id is required' });
+    if (!runId) return res.status(400).json({ message: "run_id is required" });
 
     const runResult = await pool.query(
       `SELECT id, run_month, started_at, ended_at, status, processed, success, failed, initiator, source, error_summary
        FROM billing_finalize_runs
        WHERE id = $1
        LIMIT 1`,
-      [runId]
+      [runId],
     );
-    if (!runResult.rows.length) return res.status(404).json({ message: 'Run not found' });
+    if (!runResult.rows.length)
+      return res.status(404).json({ message: "Run not found" });
 
     const itemsResult = await pool.query(
       `SELECT reseller_id, status, bill_id, message, created_at
@@ -3372,7 +3948,7 @@ const internalAutoFinalizeStatus = async (req, res) => {
        WHERE run_id = $1
        ORDER BY id DESC
        LIMIT 100`,
-      [runId]
+      [runId],
     );
 
     res.json({
@@ -3380,8 +3956,8 @@ const internalAutoFinalizeStatus = async (req, res) => {
       items: itemsResult.rows,
     });
   } catch (error) {
-    console.error('internalAutoFinalizeStatus:', error);
-    res.status(500).json({ message: 'Failed to load auto finalize status' });
+    console.error("internalAutoFinalizeStatus:", error);
+    res.status(500).json({ message: "Failed to load auto finalize status" });
   }
 };
 
@@ -3389,7 +3965,8 @@ const getInvoice = async (req, res) => {
   try {
     await initialize();
     const { resellerId } = req.params;
-    const monthParam = String(req.query.month || '').slice(0, 7) || getDhakaMonthYm();
+    const monthParam =
+      String(req.query.month || "").slice(0, 7) || getDhakaMonthYm();
 
     const resellerResult = await pool.query(
       `SELECT
@@ -3424,16 +4001,18 @@ const getInvoice = async (req, res) => {
         created_at,
         ${joiningDateExpr()} AS joining_date
        FROM resellers WHERE id = $1`,
-      [resellerId]
+      [resellerId],
     );
 
     if (!resellerResult.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
 
     const reseller = resellerResult.rows[0];
     const created = parseYMD(reseller.joining_date || reseller.created_at);
-    const createdYM = created ? `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}` : monthParam;
+    const createdYM = created
+      ? `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}`
+      : monthParam;
     const effectiveYM = monthParam < createdYM ? createdYM : monthParam;
     const monthStart = `${effectiveYM}-01`;
 
@@ -3443,7 +4022,7 @@ const getInvoice = async (req, res) => {
               bill_details, previous_due, created_at
        FROM monthly_bills
        WHERE reseller_id = $1 AND bill_month = $2::date`,
-      [resellerId, monthStart]
+      [resellerId, monthStart],
     );
 
     const paidResult = await pool.query(
@@ -3475,7 +4054,7 @@ const getInvoice = async (req, res) => {
              ELSE 'adjustment'
            END
          ) IN ('payment','discount')`,
-      [resellerId, effectiveYM]
+      [resellerId, effectiveYM],
     );
 
     const logResult = await pool.query(
@@ -3485,23 +4064,34 @@ const getInvoice = async (req, res) => {
        WHERE reseller_id = $1
          AND DATE_TRUNC('month', COALESCE(effective_date, created_at)) = DATE_TRUNC('month', $2::date)
        ORDER BY created_at DESC`,
-      [resellerId, monthStart]
+      [resellerId, monthStart],
     );
 
     const bill = billResult.rows[0] || null;
     let items = [];
-    let itemSource = 'calculated_fallback';
+    let itemSource = "calculated_fallback";
     if (bill) {
-      const snapshot = parseBillDetailsSnapshot(bill.bill_details, `bill_id=${bill.id}`);
+      const snapshot = parseBillDetailsSnapshot(
+        bill.bill_details,
+        `bill_id=${bill.id}`,
+      );
       if (snapshot.valid) {
         items = snapshot.items;
-        itemSource = 'snapshot';
+        itemSource = "snapshot";
       } else {
-        const recalculated = await calculateMonthlyBillBreakdown(resellerId, effectiveYM, reseller);
+        const recalculated = await calculateMonthlyBillBreakdown(
+          resellerId,
+          effectiveYM,
+          reseller,
+        );
         items = recalculated.items || [];
       }
     } else {
-      const recalculated = await calculateMonthlyBillBreakdown(resellerId, effectiveYM, reseller);
+      const recalculated = await calculateMonthlyBillBreakdown(
+        resellerId,
+        effectiveYM,
+        reseller,
+      );
       items = recalculated.items || [];
     }
 
@@ -3513,20 +4103,22 @@ const getInvoice = async (req, res) => {
       total_paid: parseFloat(paidResult.rows[0]?.total_paid || 0),
       total_discount: parseFloat(paidResult.rows[0]?.total_discount || 0),
       logs: logResult.rows,
-      meta: { item_source: itemSource }
+      meta: { item_source: itemSource },
     });
   } catch (error) {
-    console.error('getInvoice:', error);
-    res.status(500).json({ message: 'Failed to load invoice' });
+    console.error("getInvoice:", error);
+    res.status(500).json({ message: "Failed to load invoice" });
   }
 };
 
 const getMailTransport = () => {
-  const host = String(process.env.SMTP_HOST || '').trim();
-  const port = Number.parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = String(process.env.SMTP_USER || '').trim();
-  const pass = String(process.env.SMTP_PASS || '').trim();
-  const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || port === 465;
+  const host = String(process.env.SMTP_HOST || "").trim();
+  const port = Number.parseInt(process.env.SMTP_PORT || "587", 10);
+  const user = String(process.env.SMTP_USER || "").trim();
+  const pass = String(process.env.SMTP_PASS || "").trim();
+  const secure =
+    String(process.env.SMTP_SECURE || "").toLowerCase() === "true" ||
+    port === 465;
 
   if (!host || !port || !user || !pass) {
     return null;
@@ -3536,27 +4128,31 @@ const getMailTransport = () => {
     host,
     port,
     secure,
-    auth: { user, pass }
+    auth: { user, pass },
   });
 };
 
 const getFrontendBaseUrl = () => {
-  const candidate = String(process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '');
-  if (!candidate) return 'https://office.speednetkhulna.com';
+  const candidate = String(process.env.FRONTEND_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
+  if (!candidate) return "https://office.speednetkhulna.com";
   return candidate;
 };
 
 const parseSnapshotDataUrl = (raw) => {
-  const dataUrl = String(raw || '').trim();
+  const dataUrl = String(raw || "").trim();
   if (!dataUrl) return null;
-  const match = dataUrl.match(/^data:(image\/png|image\/jpeg);base64,([A-Za-z0-9+/=\n\r]+)$/);
+  const match = dataUrl.match(
+    /^data:(image\/png|image\/jpeg);base64,([A-Za-z0-9+/=\n\r]+)$/,
+  );
   if (!match) return null;
   const mime = match[1];
-  const base64Data = match[2].replace(/\s+/g, '');
-  const buffer = Buffer.from(base64Data, 'base64');
+  const base64Data = match[2].replace(/\s+/g, "");
+  const buffer = Buffer.from(base64Data, "base64");
   if (!buffer.length) return null;
   if (buffer.length > 12 * 1024 * 1024) return null;
-  const ext = mime === 'image/jpeg' ? 'jpg' : 'png';
+  const ext = mime === "image/jpeg" ? "jpg" : "png";
   return { mime, ext, buffer };
 };
 
@@ -3564,11 +4160,12 @@ const sendInvoiceEmailByReseller = async (req, res) => {
   try {
     await initialize();
     const { resellerId } = req.params;
-    const toEmail = String(req.body?.to_email || '').trim();
-    const monthParam = String(req.body?.month || '').slice(0, 7) || getDhakaMonthYm();
+    const toEmail = String(req.body?.to_email || "").trim();
+    const monthParam =
+      String(req.body?.month || "").slice(0, 7) || getDhakaMonthYm();
 
     if (!toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
-      return res.status(400).json({ message: 'Valid to_email is required' });
+      return res.status(400).json({ message: "Valid to_email is required" });
     }
 
     const resellerResult = await pool.query(
@@ -3576,10 +4173,10 @@ const sendInvoiceEmailByReseller = async (req, res) => {
        FROM resellers
        WHERE id = $1
        LIMIT 1`,
-      [resellerId]
+      [resellerId],
     );
     if (!resellerResult.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
 
     const monthStart = `${monthParam}-01`;
@@ -3588,35 +4185,46 @@ const sendInvoiceEmailByReseller = async (req, res) => {
        FROM monthly_bills
        WHERE reseller_id = $1 AND bill_month = $2::date
        LIMIT 1`,
-      [resellerId, monthStart]
+      [resellerId, monthStart],
     );
     const billId = billResult.rows[0]?.id || null;
 
     const transport = getMailTransport();
     if (!transport) {
       return res.status(503).json({
-        message: 'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and optional SMTP_SECURE.'
+        message:
+          "SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and optional SMTP_SECURE.",
       });
     }
 
     const frontend = getFrontendBaseUrl();
     const dynamicLink = `${frontend}/invoice?resellerId=${encodeURIComponent(resellerId)}&month=${encodeURIComponent(monthParam)}`;
-    const staticLink = billId ? `${frontend}/view-static-invoice?id=${encodeURIComponent(billId)}` : null;
-    const resellerName = resellerResult.rows[0].name || `Reseller #${resellerId}`;
-    const fromAddress = String(process.env.SMTP_FROM || process.env.SMTP_USER || 'billing@speednetkhulna.com').trim();
+    const staticLink = billId
+      ? `${frontend}/view-static-invoice?id=${encodeURIComponent(billId)}`
+      : null;
+    const resellerName =
+      resellerResult.rows[0].name || `Reseller #${resellerId}`;
+    const fromAddress = String(
+      process.env.SMTP_FROM ||
+        process.env.SMTP_USER ||
+        "billing@speednetkhulna.com",
+    ).trim();
     const snapshot = parseSnapshotDataUrl(req.body?.snapshot_data_url);
     if (req.body?.snapshot_data_url && !snapshot) {
-      return res.status(400).json({ message: 'Invalid snapshot_data_url (expected data:image/png;base64,...)' });
+      return res.status(400).json({
+        message:
+          "Invalid snapshot_data_url (expected data:image/png;base64,...)",
+      });
     }
-    const attachmentName = `invoice_${resellerId}_${monthParam}.${snapshot?.ext || 'png'}`;
+    const attachmentName = `invoice_${resellerId}_${monthParam}.${snapshot?.ext || "png"}`;
 
     const html = `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">
         <h2 style="margin:0 0 12px">Invoice Link - ${resellerName}</h2>
         <p style="margin:0 0 8px">Billing Month: <strong>${monthParam}</strong></p>
         <p style="margin:0 0 8px"><a href="${dynamicLink}">Open Invoice</a></p>
-        ${staticLink ? `<p style="margin:0 0 8px"><a href="${staticLink}">Open Final Static Invoice</a></p>` : ''}
-        ${snapshot ? `<p style="margin:0 0 8px">Attached: full invoice snapshot (${attachmentName})</p>` : ''}
+        ${staticLink ? `<p style="margin:0 0 8px"><a href="${staticLink}">Open Final Static Invoice</a></p>` : ""}
+        ${snapshot ? `<p style="margin:0 0 8px">Attached: full invoice snapshot (${attachmentName})</p>` : ""}
         <p style="margin-top:16px;color:#6b7280">Generated from Speed Net Khulna billing system.</p>
       </div>
     `;
@@ -3627,24 +4235,26 @@ const sendInvoiceEmailByReseller = async (req, res) => {
       subject: `Invoice ${monthParam} - ${resellerName}`,
       html,
       attachments: snapshot
-        ? [{
-          filename: attachmentName,
-          content: snapshot.buffer,
-          contentType: snapshot.mime
-        }]
-        : []
+        ? [
+            {
+              filename: attachmentName,
+              content: snapshot.buffer,
+              contentType: snapshot.mime,
+            },
+          ]
+        : [],
     });
 
     res.json({
-      message: 'Invoice email sent successfully',
+      message: "Invoice email sent successfully",
       to_email: toEmail,
       month: monthParam,
       links: { dynamic: dynamicLink, static: staticLink },
-      attached_snapshot: Boolean(snapshot)
+      attached_snapshot: Boolean(snapshot),
     });
   } catch (error) {
-    console.error('sendInvoiceEmailByReseller:', error);
-    res.status(500).json({ message: 'Failed to send invoice email' });
+    console.error("sendInvoiceEmailByReseller:", error);
+    res.status(500).json({ message: "Failed to send invoice email" });
   }
 };
 
@@ -3653,24 +4263,29 @@ const addDiscount = async (req, res) => {
     await initialize();
     const resellerId = Number(req.params?.id || req.body?.reseller_id || 0);
     const amount = parseAmount(req.body?.amount, 0);
-    const note = String(req.body?.note || '').trim();
-    const effectiveDateRaw = String(req.body?.effective_date || '').trim();
+    const note = String(req.body?.note || "").trim();
+    const effectiveDateRaw = String(req.body?.effective_date || "").trim();
 
-    if (!resellerId) return res.status(400).json({ message: 'Invalid reseller id' });
-    if (amount <= 0) return res.status(400).json({ message: 'Discount amount must be greater than 0' });
-    if (note.length < 3) return res.status(400).json({ message: 'Discount note is required' });
+    if (!resellerId)
+      return res.status(400).json({ message: "Invalid reseller id" });
+    if (amount <= 0)
+      return res
+        .status(400)
+        .json({ message: "Discount amount must be greater than 0" });
+    if (note.length < 3)
+      return res.status(400).json({ message: "Discount note is required" });
 
     req.body = {
       reseller_id: resellerId,
-      log_type: 'discount',
+      log_type: "discount",
       amount,
       note: `Discount: ${note}`,
       effective_date: effectiveDateRaw || new Date().toISOString(),
     };
     return addBillingLog(req, res);
   } catch (error) {
-    console.error('addDiscount:', error);
-    return res.status(500).json({ message: 'Failed to add discount' });
+    console.error("addDiscount:", error);
+    return res.status(500).json({ message: "Failed to add discount" });
   }
 };
 const getInvoiceByBillId = async (req, res) => {
@@ -3684,18 +4299,18 @@ const getInvoiceByBillId = async (req, res) => {
               bill_details, previous_due, created_at
        FROM monthly_bills
        WHERE id = $1`,
-      [billId]
+      [billId],
     );
 
     if (!billResult.rows.length) {
-      return res.status(404).json({ message: 'Bill not found' });
+      return res.status(404).json({ message: "Bill not found" });
     }
 
     const bill = billResult.rows[0];
     const resellerId = bill.reseller_id;
     const billMonthDate = parseYMD(bill.bill_month);
     const monthStart = billMonthDate
-      ? `${billMonthDate.getFullYear()}-${String(billMonthDate.getMonth() + 1).padStart(2, '0')}-${String(billMonthDate.getDate()).padStart(2, '0')}`
+      ? `${billMonthDate.getFullYear()}-${String(billMonthDate.getMonth() + 1).padStart(2, "0")}-${String(billMonthDate.getDate()).padStart(2, "0")}`
       : String(bill.bill_month).slice(0, 10);
     const monthYM = monthStart.slice(0, 7);
 
@@ -3732,11 +4347,11 @@ const getInvoiceByBillId = async (req, res) => {
         created_at,
         ${joiningDateExpr()} AS joining_date
        FROM resellers WHERE id = $1`,
-      [resellerId]
+      [resellerId],
     );
 
     if (!resellerResult.rows.length) {
-      return res.status(404).json({ message: 'Reseller not found' });
+      return res.status(404).json({ message: "Reseller not found" });
     }
 
     const paidResult = await pool.query(
@@ -3768,7 +4383,7 @@ const getInvoiceByBillId = async (req, res) => {
              ELSE 'adjustment'
            END
          ) IN ('payment','discount')`,
-      [resellerId, monthYM]
+      [resellerId, monthYM],
     );
 
     const logResult = await pool.query(
@@ -3778,16 +4393,23 @@ const getInvoiceByBillId = async (req, res) => {
        WHERE reseller_id = $1
          AND DATE_TRUNC('month', COALESCE(effective_date, created_at)) = DATE_TRUNC('month', $2::date)
        ORDER BY created_at DESC`,
-      [resellerId, monthStart]
+      [resellerId, monthStart],
     );
 
-    const snapshot = parseBillDetailsSnapshot(bill.bill_details, `bill_id=${bill.id}`);
+    const snapshot = parseBillDetailsSnapshot(
+      bill.bill_details,
+      `bill_id=${bill.id}`,
+    );
     let items = snapshot.items;
-    let itemSource = 'snapshot';
+    let itemSource = "snapshot";
     if (!snapshot.valid) {
-      const recalculated = await calculateMonthlyBillBreakdown(resellerId, monthYM, resellerResult.rows[0]);
+      const recalculated = await calculateMonthlyBillBreakdown(
+        resellerId,
+        monthYM,
+        resellerResult.rows[0],
+      );
       items = recalculated.items || [];
-      itemSource = 'calculated_fallback';
+      itemSource = "calculated_fallback";
     }
 
     res.json({
@@ -3798,11 +4420,11 @@ const getInvoiceByBillId = async (req, res) => {
       total_paid: parseFloat(paidResult.rows[0]?.total_paid || 0),
       total_discount: parseFloat(paidResult.rows[0]?.total_discount || 0),
       logs: logResult.rows,
-      meta: { item_source: itemSource }
+      meta: { item_source: itemSource },
     });
   } catch (error) {
-    console.error('getInvoiceByBillId:', error);
-    res.status(500).json({ message: 'Failed to load static invoice' });
+    console.error("getInvoiceByBillId:", error);
+    res.status(500).json({ message: "Failed to load static invoice" });
   }
 };
 
@@ -3810,9 +4432,9 @@ const sendInvoiceEmailByBillId = async (req, res) => {
   try {
     await initialize();
     const { billId } = req.params;
-    const toEmail = String(req.body?.to_email || '').trim();
+    const toEmail = String(req.body?.to_email || "").trim();
     if (!toEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
-      return res.status(400).json({ message: 'Valid to_email is required' });
+      return res.status(400).json({ message: "Valid to_email is required" });
     }
 
     const billResult = await pool.query(
@@ -3822,10 +4444,10 @@ const sendInvoiceEmailByBillId = async (req, res) => {
        JOIN resellers r ON r.id = mb.reseller_id
        WHERE mb.id = $1
        LIMIT 1`,
-      [billId]
+      [billId],
     );
     if (!billResult.rows.length) {
-      return res.status(404).json({ message: 'Bill not found' });
+      return res.status(404).json({ message: "Bill not found" });
     }
 
     const bill = billResult.rows[0];
@@ -3837,24 +4459,32 @@ const sendInvoiceEmailByBillId = async (req, res) => {
     const transport = getMailTransport();
     if (!transport) {
       return res.status(503).json({
-        message: 'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and optional SMTP_SECURE.'
+        message:
+          "SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and optional SMTP_SECURE.",
       });
     }
 
     const resellerName = bill.reseller_name || `Reseller #${bill.reseller_id}`;
-    const fromAddress = String(process.env.SMTP_FROM || process.env.SMTP_USER || 'billing@speednetkhulna.com').trim();
+    const fromAddress = String(
+      process.env.SMTP_FROM ||
+        process.env.SMTP_USER ||
+        "billing@speednetkhulna.com",
+    ).trim();
     const snapshot = parseSnapshotDataUrl(req.body?.snapshot_data_url);
     if (req.body?.snapshot_data_url && !snapshot) {
-      return res.status(400).json({ message: 'Invalid snapshot_data_url (expected data:image/png;base64,...)' });
+      return res.status(400).json({
+        message:
+          "Invalid snapshot_data_url (expected data:image/png;base64,...)",
+      });
     }
-    const attachmentName = `invoice_bill_${billId}_${monthYm}.${snapshot?.ext || 'png'}`;
+    const attachmentName = `invoice_bill_${billId}_${monthYm}.${snapshot?.ext || "png"}`;
     const html = `
       <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">
         <h2 style="margin:0 0 12px">Final Static Invoice - ${resellerName}</h2>
         <p style="margin:0 0 8px">Billing Month: <strong>${monthYm}</strong></p>
         <p style="margin:0 0 8px"><a href="${staticLink}">Open Final Static Invoice</a></p>
         <p style="margin:0 0 8px"><a href="${dynamicLink}">Open Invoice Page</a></p>
-        ${snapshot ? `<p style="margin:0 0 8px">Attached: full invoice snapshot (${attachmentName})</p>` : ''}
+        ${snapshot ? `<p style="margin:0 0 8px">Attached: full invoice snapshot (${attachmentName})</p>` : ""}
         <p style="margin-top:16px;color:#6b7280">Generated from Speed Net Khulna billing system.</p>
       </div>
     `;
@@ -3865,24 +4495,26 @@ const sendInvoiceEmailByBillId = async (req, res) => {
       subject: `Final Invoice ${monthYm} - ${resellerName}`,
       html,
       attachments: snapshot
-        ? [{
-          filename: attachmentName,
-          content: snapshot.buffer,
-          contentType: snapshot.mime
-        }]
-        : []
+        ? [
+            {
+              filename: attachmentName,
+              content: snapshot.buffer,
+              contentType: snapshot.mime,
+            },
+          ]
+        : [],
     });
 
     res.json({
-      message: 'Static invoice email sent successfully',
+      message: "Static invoice email sent successfully",
       to_email: toEmail,
       bill_id: Number(billId),
       links: { static: staticLink, dynamic: dynamicLink },
-      attached_snapshot: Boolean(snapshot)
+      attached_snapshot: Boolean(snapshot),
     });
   } catch (error) {
-    console.error('sendInvoiceEmailByBillId:', error);
-    res.status(500).json({ message: 'Failed to send static invoice email' });
+    console.error("sendInvoiceEmailByBillId:", error);
+    res.status(500).json({ message: "Failed to send static invoice email" });
   }
 };
 module.exports = {
@@ -3913,45 +4545,5 @@ module.exports = {
   sendInvoiceEmailByReseller,
   sendInvoiceEmailByBillId,
   syncProjectedBillsForCurrentMonth,
-  refreshProjectedBillForCurrentMonth
+  refreshProjectedBillForCurrentMonth,
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

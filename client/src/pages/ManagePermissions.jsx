@@ -1,6 +1,8 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Modal, Spinner } from 'react-bootstrap';
+import Swal from 'sweetalert2';
 import { getManagePermissionsData, updatePermission } from '../services/permissionService';
-import { getRoles, saveRole, assignRoleToUser } from '../services/roleService';
+import { getRoles, saveRole, deleteRole, assignRoleToUser } from '../services/roleService';
 import { t } from '../i18n';
 import '../styles/AdminDashboard.css';
 import '../styles/ManagePermissions.css';
@@ -8,7 +10,6 @@ import '../styles/ManagePermissions.css';
 const permissionGroups = {
   user_management: ['p_manage_users', 'p_edit_any_profile', 'p_manage_permissions', 'p_employees'],
   leave_management: ['p_manage_leaves', 'p_leave_submission', 'p_my_leaves', 'p_approvals', 'p_entitlements', 'p_apply_leave'],
-  system: ['p_manage_menus', 'p_manage_permissions', 'p_reports', 'p_notices', 'p_calendar', 'p_phone_directory', 'p_system_logs'],
   reseller_management: [
     'p_reseller_list',
     'p_reseller_profile',
@@ -24,6 +25,9 @@ const permissionGroups = {
     'p_add_reseller',
     'p_noc_view'
   ],
+  assets: ['p_assets_view', 'p_assets_manage'],
+  officeWork: ['p_office_work'],
+  system: ['p_manage_menus', 'p_reports', 'p_notices', 'p_calendar', 'p_phone_directory', 'p_system_logs'],
   procurement: ['p_manage_procurement']
 };
 
@@ -33,6 +37,8 @@ const groupTitle = (groupId) => {
   if (groupId === 'system') return t('managePermissions.system');
   if (groupId === 'reseller_management') return t('managePermissions.resellerManagement');
   if (groupId === 'procurement') return t('managePermissions.procurement');
+  if (groupId === 'assets') return t('managePermissions.assets');
+  if (groupId === 'officeWork') return t('managePermissions.officeWork');
   return t('managePermissions.other');
 };
 
@@ -54,22 +60,27 @@ const ManagePermissions = () => {
   const [showOnlyOverrides, setShowOnlyOverrides] = useState(false);
   const [message, setMessage] = useState(null);
 
+  // Add Role Modal State
+  const [showAddRoleModal, setShowAddRoleModal] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [permData, rolesData] = await Promise.all([getManagePermissionsData(), getRoles()]);
+      setUsers(Array.isArray(permData.users) ? permData.users : []);
+      setColumns(Array.isArray(permData.columns) ? permData.columns : []);
+      setActivePermissions(permData.activePermissions || {});
+      setRoles(Array.isArray(rolesData) ? rolesData : []);
+    } catch {
+      setMessage({ type: 'danger', text: t('managePermissions.loadFailed') });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const run = async () => {
-      try {
-        setLoading(true);
-        const [permData, rolesData] = await Promise.all([getManagePermissionsData(), getRoles()]);
-        setUsers(Array.isArray(permData.users) ? permData.users : []);
-        setColumns(Array.isArray(permData.columns) ? permData.columns : []);
-        setActivePermissions(permData.activePermissions || {});
-        setRoles(Array.isArray(rolesData) ? rolesData : []);
-      } catch {
-        setMessage({ type: 'danger', text: t('managePermissions.loadFailed') });
-      } finally {
-        setLoading(false);
-      }
-    };
-    run();
+    fetchData();
   }, []);
 
   const getColumnName = (colKey) => {
@@ -126,6 +137,42 @@ const ManagePermissions = () => {
     }
   };
 
+  const handleAddRole = async (e) => {
+    e.preventDefault();
+    if (!newRoleName.trim()) return;
+    try {
+      await saveRole({ name: newRoleName.trim(), permissions: {} });
+      setNewRoleName('');
+      setShowAddRoleModal(false);
+      Swal.fire(t('managePermissions.roleCreated'), '', 'success');
+      fetchData();
+    } catch {
+      Swal.fire(t('managePermissions.roleUpdateFailed'), '', 'error');
+    }
+  };
+
+  const handleDeleteRole = async (roleId) => {
+    const result = await Swal.fire({
+      title: t('managePermissions.deleteRoleConfirm'),
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: t('manageLeaves.confirmYes'),
+      cancelButtonText: t('manageLeaves.cancel'),
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await deleteRole(roleId);
+        Swal.fire(t('managePermissions.roleDeleted'), '', 'success');
+        fetchData();
+      } catch (err) {
+        Swal.fire(t('managePermissions.roleDeleteFailed'), '', 'error');
+      }
+    }
+  };
+
   const handleUserOverrideToggle = async (userId, column, currentValue) => {
     const newValue = currentValue ? 0 : 1;
     setActivePermissions((prev) => ({ ...prev, [userId]: { ...(prev[userId] || {}), [column]: newValue === 1 } }));
@@ -171,7 +218,14 @@ const ManagePermissions = () => {
     }
   };
 
-  if (loading) return <div className="p-3">{t('managePermissions.loading')}</div>;
+  if (loading) {
+    return (
+      <div className="d-flex flex-column align-items-center justify-content-center py-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-3 text-muted fw-bold">{t('managePermissions.loading')}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="manage-permissions-page">
@@ -190,10 +244,10 @@ const ManagePermissions = () => {
       </section>
 
       <section className="mp-toolbar">
-        <div className="d-flex flex-wrap gap-2">
-          <button className={`btn btn-sm ${activeTab === 'roles' ? 'btn-primary' : 'btn-light'}`} onClick={() => setActiveTab('roles')}>{t('managePermissions.tabRoles')}</button>
-          <button className={`btn btn-sm ${activeTab === 'users' ? 'btn-primary' : 'btn-light'}`} onClick={() => setActiveTab('users')}>{t('managePermissions.tabUsers')}</button>
-          <button className={`btn btn-sm ${activeTab === 'overrides' ? 'btn-primary' : 'btn-light'}`} onClick={() => setActiveTab('overrides')}>{t('managePermissions.tabOverrides')}</button>
+        <div className="nav nav-pills gap-2">
+          <button className={`nav-link btn-sm fw-bold ${activeTab === 'roles' ? 'active' : 'text-dark'}`} onClick={() => setActiveTab('roles')}>{t('managePermissions.tabRoles')}</button>
+          <button className={`nav-link btn-sm fw-bold ${activeTab === 'users' ? 'active' : 'text-dark'}`} onClick={() => setActiveTab('users')}>{t('managePermissions.tabUsers')}</button>
+          <button className={`nav-link btn-sm fw-bold ${activeTab === 'overrides' ? 'active' : 'text-dark'}`} onClick={() => setActiveTab('overrides')}>{t('managePermissions.tabOverrides')}</button>
         </div>
         {(activeTab === 'users' || activeTab === 'overrides') && (
           <div className="mp-search">
@@ -201,43 +255,55 @@ const ManagePermissions = () => {
             <input type="text" placeholder={t('managePermissions.searchUser')} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         )}
+        {activeTab === 'roles' && (
+          <button className="btn btn-primary fw-bold" onClick={() => setShowAddRoleModal(true)}>
+            <i className="fas fa-plus-circle me-2" /> {t('managePermissions.addRole')}
+          </button>
+        )}
       </section>
 
       {message && (
-        <div className={`mp-alert ${message.type === 'danger' ? 'danger' : 'info'} mt-3`}>
-          <i className={`fas ${message.type === 'danger' ? 'fa-triangle-exclamation' : 'fa-circle-info'}`} />
+        <div className={`mp-alert ${message.type === 'danger' ? 'danger' : 'info'}`}>
+          <i className={`fas ${message.type === 'danger' ? 'fa-circle-exclamation' : 'fa-circle-info'}`} />
           <span>{message.text}</span>
         </div>
       )}
 
       {activeTab === 'roles' && (
-        <div className="roles-section mt-4">
+        <div className="roles-section">
           {roles.map((role) => (
-            <div key={role.id} className="mp-table-card mb-4">
-              <header>
+            <div key={role.id} className="mp-table-card mb-4 border-0 shadow-sm overflow-hidden">
+              <header className="bg-white border-bottom border-light">
                 <div>
-                  <h2>{t('managePermissions.rolePermissions', { role: role.name })}</h2>
-                  <p>{t('managePermissions.defaultMatrix')}</p>
+                  <div className="d-flex align-items-center gap-3">
+                    <h2 className="mb-0 text-primary">{role.name}</h2>
+                    {role.name.toLowerCase() !== 'super admin' && (
+                      <button className="btn btn-outline-danger btn-sm rounded-circle border-0" onClick={() => handleDeleteRole(role.id)} title={t('managePermissions.deleteRole')}>
+                        <i className="fas fa-trash-alt" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1 small">{t('managePermissions.defaultMatrix')}</p>
                 </div>
-                <span className="badge rounded-pill text-bg-light border">
+                <span className="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle px-3 py-2">
                   {Object.keys(role.permissions || {}).length} {t('managePermissions.enabled')}
                 </span>
               </header>
 
-              <div className="p-3">
+              <div className="p-4 bg-white">
                 {Object.entries(permissionGroups).map(([groupId, perms]) => (
-                  <div key={groupId} className="mb-3">
-                    <h6 className="fw-bold text-dark mb-2">{groupTitle(groupId)}</h6>
+                  <div key={groupId} className="mb-4">
+                    <h6 className="fw-bold text-secondary mb-3 text-uppercase small">{groupTitle(groupId)}</h6>
                     <div className="d-flex flex-wrap gap-2">
                       {perms.map((pKey) => (
-                        <label key={pKey} className="d-inline-flex align-items-center gap-2 border rounded-pill px-3 py-2 bg-white">
+                        <label key={pKey} className="role-permission-label">
                           <input
                             type="checkbox"
                             className="form-check-input m-0"
                             checked={!!role.permissions?.[pKey]}
                             onChange={() => handleRoleToggle(role, pKey)}
                           />
-                          <span className="small fw-semibold">{getColumnName(pKey)}</span>
+                          <span className="small fw-bold">{getColumnName(pKey)}</span>
                         </label>
                       ))}
                     </div>
@@ -245,18 +311,18 @@ const ManagePermissions = () => {
                 ))}
 
                 {extraPermissionKeys.length > 0 && (
-                  <div className="mb-3">
-                    <h6 className="fw-bold text-dark mb-2">{t('managePermissions.other')}</h6>
+                  <div className="mb-2">
+                    <h6 className="fw-bold text-secondary mb-3 text-uppercase small">{t('managePermissions.other')}</h6>
                     <div className="d-flex flex-wrap gap-2">
                       {extraPermissionKeys.map((pKey) => (
-                        <label key={pKey} className="d-inline-flex align-items-center gap-2 border rounded-pill px-3 py-2 bg-white">
+                        <label key={pKey} className="role-permission-label">
                           <input
                             type="checkbox"
                             className="form-check-input m-0"
                             checked={!!role.permissions?.[pKey]}
                             onChange={() => handleRoleToggle(role, pKey)}
                           />
-                          <span className="small fw-semibold">{getColumnName(pKey)}</span>
+                          <span className="small fw-bold">{getColumnName(pKey)}</span>
                         </label>
                       ))}
                     </div>
@@ -269,16 +335,16 @@ const ManagePermissions = () => {
       )}
 
       {activeTab === 'users' && (
-        <div className="mp-table-card mt-4 p-3">
+        <div className="mp-table-card mt-2 border-0 shadow-sm overflow-hidden">
           <table className="table mp-table align-middle mb-0">
             <thead><tr><th>{t('managePermissions.employee')}</th><th>{t('managePermissions.currentRole')}</th><th>{t('managePermissions.action')}</th></tr></thead>
             <tbody>
               {filteredUsers.map((user) => (
                 <tr key={user.id}>
                   <td className="mp-user-col"><strong>{user.full_name}</strong><small>{user.employee_id}</small></td>
-                  <td><span className="badge rounded-pill text-bg-light border">{roles.find((r) => r.id === user.role_id)?.name || t('managePermissions.defaultRole')}</span></td>
+                  <td><span className="badge rounded-pill bg-light text-dark border px-3 py-2">{roles.find((r) => r.id === user.role_id)?.name || t('managePermissions.defaultRole')}</span></td>
                   <td>
-                    <select className="form-select form-select-sm" value={user.role_id || ''} onChange={(e) => handleAssignRole(user.id, e.target.value)}>
+                    <select className="form-select form-select-sm w-auto" value={user.role_id || ''} onChange={(e) => handleAssignRole(user.id, e.target.value)}>
                       <option value="">{t('managePermissions.selectRole')}</option>
                       {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                     </select>
@@ -291,21 +357,25 @@ const ManagePermissions = () => {
       )}
 
       {activeTab === 'overrides' && (
-        <div className="mp-table-card mt-4 p-3 table-responsive">
-          <div className="mp-override-controls mb-3">
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <label className="small text-muted fw-semibold mb-0">{t('managePermissions.permissionGroup')}</label>
-              <select className="form-select form-select-sm mp-filter-select" value={overrideGroupFilter} onChange={(e) => setOverrideGroupFilter(e.target.value)}>
-                {overrideGroupOptions.map((g) => (
-                  <option key={g} value={g}>{g === 'all' ? t('managePermissions.allWithCount', { count: columns.length }) : groupTitle(g)}</option>
-                ))}
-              </select>
-              <label className="d-inline-flex align-items-center gap-2 small mb-0">
-                <input type="checkbox" checked={showOnlyOverrides} onChange={(e) => setShowOnlyOverrides(e.target.checked)} />
-                <span>{t('managePermissions.showOnlyOverridden')}</span>
-              </label>
+        <div className="mp-table-card mt-2 border-0 shadow-sm overflow-hidden table-responsive">
+          <div className="p-4 border-bottom bg-light-subtle">
+            <div className="mp-override-controls">
+              <div className="d-flex align-items-center gap-3 flex-wrap">
+                <div className="d-flex align-items-center gap-2">
+                  <label className="small text-muted fw-bold text-uppercase mb-0">{t('managePermissions.permissionGroup')}</label>
+                  <select className="form-select form-select-sm mp-filter-select" value={overrideGroupFilter} onChange={(e) => setOverrideGroupFilter(e.target.value)}>
+                    {overrideGroupOptions.map((g) => (
+                      <option key={g} value={g}>{g === 'all' ? t('managePermissions.allWithCount', { count: columns.length }) : groupTitle(g)}</option>
+                    ))}
+                  </select>
+                </div>
+                <label className="d-inline-flex align-items-center gap-2 small mb-0 fw-bold">
+                  <input type="checkbox" className="form-check-input m-0" checked={showOnlyOverrides} onChange={(e) => setShowOnlyOverrides(e.target.checked)} />
+                  <span>{t('managePermissions.showOnlyOverridden')}</span>
+                </label>
+              </div>
+              <small className="text-primary fw-bold"><i className="fas fa-info-circle me-1" />{t('managePermissions.roleEnabledLocked')}</small>
             </div>
-            <small className="text-muted">{t('managePermissions.roleEnabledLocked')}</small>
           </div>
 
           <table className="table mp-table align-middle mb-0">
@@ -325,15 +395,18 @@ const ManagePermissions = () => {
                       <td className="mp-user-col">
                         <strong>{user.full_name}</strong>
                         <small>{user.employee_id}</small>
-                        <span>{userRole?.name || t('managePermissions.staff')}</span>
-                        <button
-                          className="btn btn-link btn-sm p-0 mt-1 mp-clear-btn"
-                          onClick={() => handleClearUserOverrides(user.id)}
-                          disabled={userOverrideCount === 0}
-                          type="button"
-                        >
-                          {t('managePermissions.clearOverrides', { count: userOverrideCount })}
-                        </button>
+                        <div className="d-flex align-items-center gap-2 mt-1">
+                          <span className="badge rounded-pill bg-primary-subtle text-primary border-0">{userRole?.name || t('managePermissions.staff')}</span>
+                          {userOverrideCount > 0 && (
+                            <button
+                              className="btn btn-link btn-sm p-0 text-danger text-decoration-none fw-bold small"
+                              onClick={() => handleClearUserOverrides(user.id)}
+                              type="button"
+                            >
+                              {t('managePermissions.clearOverrides', { count: userOverrideCount })}
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {overrideColumns.map((col) => {
@@ -362,8 +435,36 @@ const ManagePermissions = () => {
           </table>
         </div>
       )}
+
+      {/* Add Role Modal */}
+      <Modal show={showAddRoleModal} onHide={() => setShowAddRoleModal(false)} centered className="mp-modal">
+        <Modal.Header closeButton className="border-0 px-4 pt-4">
+          <Modal.Title className="fw-bold text-primary">{t('managePermissions.addRole')}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="px-4 pb-4">
+          <form onSubmit={handleAddRole}>
+            <div className="mb-4">
+              <label className="form-label small fw-bold text-secondary text-uppercase">{t('managePermissions.roleName')}</label>
+              <input
+                type="text"
+                className="form-control form-control-lg border-2"
+                placeholder={t('managePermissions.roleNamePlaceholder')}
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="d-flex gap-2">
+              <button type="button" className="btn btn-light btn-lg flex-grow-1 fw-bold" onClick={() => setShowAddRoleModal(false)}>{t('employees.cancel')}</button>
+              <button type="submit" className="btn btn-primary btn-lg flex-grow-1 fw-bold">{t('managePermissions.saveRole')}</button>
+            </div>
+          </form>
+        </Modal.Body>
+      </Modal>
     </div>
   );
 };
 
 export default ManagePermissions;
+

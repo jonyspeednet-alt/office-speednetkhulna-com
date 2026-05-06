@@ -40,11 +40,18 @@ const CANONICAL_TO_LEGACY = Object.entries(LEGACY_TO_CANONICAL).reduce((acc, [le
   return acc;
 }, {});
 
+const MASTER_ADMIN_EMPLOYEE_IDS = new Set(['SN-01']);
+
 const isTruthyPermission = (value) => value === true || value === 1 || value === '1';
 
 const normalizeRole = (role) => String(role || '').trim().toLowerCase();
 
+const normalizeEmployeeId = (employeeId) => String(employeeId || '').trim().toUpperCase();
+
+const isMasterAdminUser = (user) => MASTER_ADMIN_EMPLOYEE_IDS.has(normalizeEmployeeId(user?.employee_id || user?.emp_id));
+
 const isSuperAdmin = (user) => {
+  if (isMasterAdminUser(user)) return true;
   const role = normalizeRole(user?.role_name || user?.role);
   return role === 'super admin' || role === 'superadmin';
 };
@@ -87,7 +94,9 @@ const resolvePermission = (user, requestedPermission) => {
 module.exports = {
   LEGACY_TO_CANONICAL,
   CANONICAL_TO_LEGACY,
+  MASTER_ADMIN_EMPLOYEE_IDS,
   isTruthyPermission,
+  isMasterAdminUser,
   isSuperAdmin,
   resolvePermission,
 };

@@ -280,6 +280,7 @@ const AssetManagement = () => {
   const [assetCategoryFilter, setAssetCategoryFilter] = useState('all');
   const [assetStatusFilter, setAssetStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [activeTab, setActiveTab] = useState('assets');
   const [editingAsset, setEditingAsset] = useState(null);
   const [creatingAsset, setCreatingAsset] = useState(false);
@@ -325,20 +326,21 @@ const AssetManagement = () => {
 
   const load = async (assetSearch = search) => {
     setLoading(true);
+    setLoadError('');
     try {
       const [
-        summaryData,
-        reportsData,
-        mastersData,
-        assetsData,
-        warrantiesData,
-        issuesData,
-        repairsData,
-        replacementsData,
-        movementsData,
-        stockItemsData,
-        stockMovementsData
-      ] = await Promise.all([
+        summaryResult,
+        reportsResult,
+        mastersResult,
+        assetsResult,
+        warrantiesResult,
+        issuesResult,
+        repairsResult,
+        replacementsResult,
+        movementsResult,
+        stockItemsResult,
+        stockMovementsResult
+      ] = await Promise.allSettled([
         getAssetSummary(),
         getAssetReports(),
         getAssetMasters(),
@@ -351,6 +353,33 @@ const AssetManagement = () => {
         getAssetStockItems(),
         getAssetStockMovements()
       ]);
+
+      const pickValue = (result, fallback) => (result.status === 'fulfilled' ? result.value : fallback);
+      const failedResults = [
+        summaryResult,
+        reportsResult,
+        mastersResult,
+        assetsResult,
+        warrantiesResult,
+        issuesResult,
+        repairsResult,
+        replacementsResult,
+        movementsResult,
+        stockItemsResult,
+        stockMovementsResult
+      ].filter((result) => result.status === 'rejected');
+
+      const summaryData = pickValue(summaryResult, null);
+      const reportsData = pickValue(reportsResult, null);
+      const mastersData = pickValue(mastersResult, null);
+      const assetsData = pickValue(assetsResult, []);
+      const warrantiesData = pickValue(warrantiesResult, []);
+      const issuesData = pickValue(issuesResult, []);
+      const repairsData = pickValue(repairsResult, []);
+      const replacementsData = pickValue(replacementsResult, []);
+      const movementsData = pickValue(movementsResult, []);
+      const stockItemsData = pickValue(stockItemsResult, []);
+      const stockMovementsData = pickValue(stockMovementsResult, []);
 
       setSummary(summaryData);
       setReports({
@@ -379,8 +408,23 @@ const AssetManagement = () => {
       setMovements(Array.isArray(movementsData) ? movementsData : []);
       setStockItems(Array.isArray(stockItemsData) ? stockItemsData : []);
       setStockMovements(Array.isArray(stockMovementsData) ? stockMovementsData : []);
+
+      if (failedResults.length) {
+        const unauthorized = failedResults.some((result) => Number(result.reason?.response?.status) === 403);
+        setLoadError(
+          unauthorized
+            ? 'You do not have permission to view Asset Management data yet.'
+            : 'Some asset data could not be loaded right now. Desk map may be partially available.'
+        );
+      }
     } catch (error) {
       console.error('[AssetManagement] load:', error);
+      const statusCode = Number(error?.response?.status || 0);
+      setLoadError(
+        statusCode === 403
+          ? 'You do not have permission to view Asset Management data yet.'
+          : 'Asset Management data could not be loaded right now.'
+      );
     } finally {
       setLoading(false);
     }
@@ -2429,6 +2473,12 @@ const AssetManagement = () => {
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div className={`alert ${loadError.includes('permission') ? 'alert-warning' : 'alert-danger'} mb-4`} role="alert">
+          {loadError}
+        </div>
+      )}
 
       <div className="row g-3 mb-4 asset-summary-grid">
         <div className="col-md-3"><Card label="Offices" value={summary?.offices ?? 0} hint="Head office and branches" tone="blue" /></div>

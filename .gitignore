@@ -55,3 +55,22 @@ temp/
 secrets/
 secrets/*.local.md
 secrets/*.local.txt
+
+# Build artifacts
+.deploy_tmp/
+*.tgz
+
+# Generated reports
+reports/
+exports/reports/
+*.json
+
+# Generated tool directories
+.kilocode/
+
+# PM2 logs
+pm2_logs*.txt
+
+# Test files (ops directory)
+ops/proxy.php
+ops/test.php

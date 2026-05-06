@@ -1,4 +1,5 @@
 const pool = require('../utilities/db');
+const { resolvePermission } = require('../utilities/permissionRegistry');
 const ALWAYS_VISIBLE_LINKS = new Set(['/employees']);
 const normalizeMenuLink = (link) => {
   if (!link) return '';
@@ -102,8 +103,15 @@ const getSidebarData = async (req, res) => {
       });
     }
 
+    const canAccessAssetManagement =
+      isSuperAdmin
+      || (permissions && (
+        permissions['all_access']
+        || resolvePermission(req.user, 'assets.view')
+        || resolvePermission(req.user, 'assets.manage')
+      ));
     const hasAssetManagement = visibleMenus.some((m) => normalizeMenuLink(m.link) === '/asset-management');
-    if (!hasAssetManagement) {
+    if (canAccessAssetManagement && !hasAssetManagement) {
       visibleMenus.push({
         id: 1013,
         menu_name: 'Asset Management',

@@ -17,7 +17,9 @@
   --dash-radius: 24px;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -44,7 +46,7 @@ body {
   padding: 0;
 }
 
-.sidebar.collapsed + .main-content.admin-dashboard-page {
+.sidebar.collapsed+.main-content.admin-dashboard-page {
   margin-left: 85px;
   width: calc(100% - 85px);
 }
@@ -79,14 +81,30 @@ body {
   min-height: 120px;
 }
 
-.sk-hero { min-height: 320px; }
-.sk-grid { min-height: 90px; }
-.sk-main { min-height: 420px; }
-.sk-side { min-height: 420px; }
+.sk-hero {
+  min-height: 320px;
+}
+
+.sk-grid {
+  min-height: 90px;
+}
+
+.sk-main {
+  min-height: 420px;
+}
+
+.sk-side {
+  min-height: 420px;
+}
 
 @keyframes shimmer {
-  0% { background-position: 0 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .dash-error {
@@ -104,7 +122,7 @@ body {
   gap: 1.25rem;
   padding: 1.5rem;
   border-radius: var(--dash-radius);
-  background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(241,245,249,0.95));
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.95));
   border: 1px solid var(--dash-border);
   box-shadow: var(--dash-shadow);
 }
@@ -280,7 +298,7 @@ body {
 
 .hero-btn.secondary,
 .action-btn.ghost {
-  background: rgba(255,255,255,0.88);
+  background: rgba(255, 255, 255, 0.88);
   color: var(--dash-text);
   border-color: rgba(148, 163, 184, 0.24);
 }
@@ -314,7 +332,7 @@ body {
 
 .hero-stat.big span,
 .hero-stat.big small {
-  color: rgba(255,255,255,0.75);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .hero-stat small {
@@ -365,10 +383,21 @@ body {
   font-size: 0.82rem;
 }
 
-.tone-blue .quick-icon { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
-.tone-violet .quick-icon { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
-.tone-green .quick-icon { background: linear-gradient(135deg, #059669, #047857); }
-.tone-amber .quick-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.tone-blue .quick-icon {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.tone-violet .quick-icon {
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+}
+
+.tone-green .quick-icon {
+  background: linear-gradient(135deg, #059669, #047857);
+}
+
+.tone-amber .quick-icon {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
 
 .dashboard-layout {
   display: grid;
@@ -489,9 +518,20 @@ body {
   text-transform: uppercase;
 }
 
-.feed-badge.approved { background: rgba(5, 150, 105, 0.12); color: var(--dash-success); }
-.feed-badge.pending { background: rgba(245, 158, 11, 0.12); color: #b45309; }
-.feed-badge.rejected { background: rgba(239, 68, 68, 0.12); color: var(--dash-danger); }
+.feed-badge.approved {
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--dash-success);
+}
+
+.feed-badge.pending {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.feed-badge.rejected {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--dash-danger);
+}
 
 .table-wrap {
   display: grid;
@@ -544,7 +584,7 @@ body {
 .whatsapp-panel .qr-frame {
   padding: 0.9rem;
   border-radius: 22px;
-  background: rgba(255,255,255,0.92);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.16);
   display: grid;
   place-items: center;
@@ -592,8 +632,13 @@ body {
 }
 
 @keyframes qrSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .dash-copy {
@@ -838,8 +883,13 @@ body {
   word-break: break-word;
 }
 
-.dash-note.danger { background: rgba(254, 242, 242, 0.98); }
-.dash-note.warn { background: rgba(255, 251, 235, 0.98); }
+.dash-note.danger {
+  background: rgba(254, 242, 242, 0.98);
+}
+
+.dash-note.warn {
+  background: rgba(255, 251, 235, 0.98);
+}
 
 .panel-actions {
   display: flex;
@@ -887,6 +937,7 @@ body {
 }
 
 @media (max-width: 1200px) {
+
   .admin-hero,
   .dashboard-layout {
     grid-template-columns: 1fr;
@@ -950,6 +1001,7 @@ body {
 }
 
 @media (max-width: 480px) {
+
   .admin-hero,
   .dash-panel {
     padding: 1rem;

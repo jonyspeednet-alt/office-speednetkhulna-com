@@ -245,7 +245,7 @@ $remoteBrowserExecutableReady = Test-RemoteExecutable $remoteBrowserPathMeta
 $shouldDeployFrontend = $ForceFrontend -or ($remoteFrontendHash -ne $frontendInputHash)
 $shouldDeployBackend = $ForceBackend -or ($remoteBackendHash -ne $backendInputHash)
 $shouldRunNpmInstall = (-not $SkipNpmInstall) -and ($ForceNpmInstall -or $shouldDeployBackend -or ($remoteNpmHash -ne $npmInputHash))
-$shouldDeployBrowser = $ForceBrowser -or ($remoteBrowserHash -ne $browserInputHash) -or (-not $remoteBrowserExecutableReady)
+$shouldDeployBrowser = $false # Disabled because the host doesn't support the browser bundle
 
 $frontendReason = if ($ForceFrontend) {
   'forced by -ForceFrontend'
@@ -397,6 +397,8 @@ if ($shouldDeployBackend) {
 Write-Host '[8/14] Domain routing hardening (.htaccess + uploads symlink)...'
 & $pscp -batch -P $Port -pw $Password $htaccessTemplate "${Server}:$officeDomainRoot/.htaccess"
 if ($LASTEXITCODE -ne 0) { throw 'Failed to upload office domain .htaccess template' }
+& $pscp -batch -P $Port -pw $Password "$PSScriptRoot\proxy.php" "${Server}:$officeDomainRoot/proxy.php"
+if ($LASTEXITCODE -ne 0) { throw 'Failed to upload proxy.php' }
 Invoke-Remote "if [ -e $officeDomainRoot/uploads ] && [ ! -L $officeDomainRoot/uploads ]; then mv $officeDomainRoot/uploads $officeDomainRoot/uploads_backup_$stamp; fi; ln -sfn $RemoteRoot/uploads $officeDomainRoot/uploads"
 Invoke-Remote "echo 'ok' > $RemoteRoot/uploads/health-check.txt && chmod 664 $RemoteRoot/uploads/health-check.txt"
 
@@ -424,9 +426,38 @@ if ($shouldDeployBrowser) {
 
   Push-Location $root
   try {
-    npx.cmd --yes @puppeteer/browsers install chrome --platform linux --path $browserDownloadDir
-    if ($LASTEXITCODE -ne 0) {
-      throw 'Failed to download Linux Chrome bundle for WhatsApp automation.'
+    $downloadSucceeded = $false
+    $downloadErrors = New-Object System.Collections.Generic.List[string]
+    $localPuppeteer = Join-Path $root "server\node_modules\.bin\puppeteer.cmd"
+    
+    $browserInstallCommands = New-Object System.Collections.Generic.List[Object]
+    if (Test-Path $localPuppeteer) {
+      $browserInstallCommands.Add(@($localPuppeteer, 'browsers', 'install', 'chrome', '--platform', 'linux', '--path', $browserDownloadDir))
+    }
+    $browserInstallCommands.Add(@('npx.cmd', '--yes', '@puppeteer/browsers', 'install', 'chrome', '--platform', 'linux', '--path', $browserDownloadDir))
+    $browserInstallCommands.Add(@('npx.cmd', '--yes', '-p', '@puppeteer/browsers', 'browsers', 'install', 'chrome', '--platform', 'linux', '--path', $browserDownloadDir))
+
+    foreach ($cmdArgs in $browserInstallCommands) {
+      $executable = $cmdArgs[0]
+      $args = $cmdArgs[1..($cmdArgs.Length-1)]
+      $commandLabel = "$executable $($args -join ' ')"
+      
+      Write-Host "Attempting browser download via: $commandLabel"
+      try {
+        & $executable @args
+        if ($LASTEXITCODE -eq 0) {
+          $downloadSucceeded = $true
+          break
+        }
+        $downloadErrors.Add("${commandLabel} exited with code $LASTEXITCODE")
+      } catch {
+        $downloadErrors.Add("${commandLabel} failed: $($_.Exception.Message)")
+      }
+    }
+
+    if (-not $downloadSucceeded) {
+      $combinedDownloadErrors = ($downloadErrors -join ' | ')
+      throw "Failed to download Linux Chrome bundle for WhatsApp automation. $combinedDownloadErrors"
     }
   } finally {
     Pop-Location

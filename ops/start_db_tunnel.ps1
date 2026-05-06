@@ -25,6 +25,8 @@ $args = @(
   '-N',
   '-L',
   '5433:127.0.0.1:5432',
+  '-keepalive',
+  '60',
   '199.188.200.186'
 )
 
@@ -36,6 +38,7 @@ if ($useSshKey -and $sshExe) {
     '-p', '21098',
     '-i', $sshKeyFile,
     '-o', 'BatchMode=yes',
+    '-o', 'ServerAliveInterval=60',
     'speeuvmq@199.188.200.186'
   )
   Start-Process -WindowStyle Hidden -FilePath $sshExe.Source -ArgumentList $sshArgs -RedirectStandardOutput $LogPath -RedirectStandardError $errLog
