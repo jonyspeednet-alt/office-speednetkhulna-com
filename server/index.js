@@ -80,6 +80,26 @@ if (!authSecretConfigured) {
 // Enable Gzip compression
 app.use(compression());
 
+// ============================================
+// SECURITY HEADERS MIDDLEWARE
+// ============================================
+app.use((req, res, next) => {
+    // Prevent clickjacking
+    res.setHeader('X-Frame-Options', 'DENY');
+    // Prevent MIME type sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // XSS protection (legacy browsers)
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Force HTTPS for 1 year
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    // Referrer policy
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Permissions policy
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+    next();
+});
+
+
 // CORS Configuration
 const exactAllowedOrigins = new Set([
     'http://localhost:3000',

@@ -35,3 +35,9 @@ export const updateEmployee = async (id, formData) => {
     });
     return response.data;
 };
+
+// NEW: Toggle employee active/inactive
+export const toggleEmployeeStatus = async (id) => {
+    const response = await apiClient.patch(`${API_URL}/${id}/status`);
+    return response.data;
+};

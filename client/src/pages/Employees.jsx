@@ -1,33 +1,26 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Modal } from 'react-bootstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Swal from 'sweetalert2';
 import ImageWithFallback from '../components/ImageWithFallback';
-import { getEmployees, getDepartments, getNextEmployeeId, addEmployee } from '../services/employeeService';
+import { getEmployees, getDepartments, getNextEmployeeId, addEmployee, toggleEmployeeStatus } from '../services/employeeService';
 import { t } from '../i18n';
 import '../styles/AdminDashboard.css';
 import '../styles/Employees.css';
 
 const Employees = () => {
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState({ search: '', dept: '' });
+  const [filters, setFilters] = useState({ search: '', dept: '', status: 'all' });
   const loggedInUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem('user') || '{}');
-    } catch {
-      return {};
-    }
+    try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+    catch { return {}; }
   }, []);
   const canAddEmployee = useMemo(() => {
     const perms = loggedInUser?.permissions || {};
     return Boolean(
-      loggedInUser?.all_access ||
-      loggedInUser?.p_manage_users ||
-      loggedInUser?.['users.manage'] ||
-      perms.all_access ||
-      perms.p_manage_users ||
-      perms['users.manage']
+      loggedInUser?.all_access || loggedInUser?.p_manage_users || loggedInUser?.['users.manage'] ||
+      perms.all_access || perms.p_manage_users || perms['users.manage']
     );
   }, [loggedInUser]);
 
@@ -39,25 +32,21 @@ const Employees = () => {
 
   const [showModal, setShowModal] = useState(false);
   const [generatedId, setGeneratedId] = useState(t('employees.generating'));
-  const [formData, setFormData] = useState({
-    role: 'Staff',
-    blood_group: '',
-    emergency_phone: '',
-    present_address: '',
-    permanent_address: '',
-    nid_number: ''
-  });
+  const [formData, setFormData] = useState({ role: 'Staff', blood_group: '', emergency_phone: '', present_address: '', permanent_address: '', nid_number: '' });
 
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments'],
-    queryFn: getDepartments,
-  });
+  const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: getDepartments });
 
-  const { data: employees = [], isLoading: loading } = useQuery({
+  const { data: allEmployees = [], isLoading: loading } = useQuery({
     queryKey: ['employees', debouncedSearch, filters.dept],
     queryFn: () => getEmployees({ search: debouncedSearch, dept: filters.dept }),
-    placeholderData: (previousData) => previousData,
+    placeholderData: (prev) => prev,
   });
+
+  // Client-side status filter
+  const employees = useMemo(() => {
+    if (filters.status === 'all') return allEmployees;
+    return allEmployees.filter((emp) => String(emp.status || 'Active').toLowerCase() === filters.status);
+  }, [allEmployees, filters.status]);
 
   const addMutation = useMutation({
     mutationFn: addEmployee,
@@ -71,60 +60,67 @@ const Employees = () => {
     }
   });
 
+  const toggleStatusMutation = useMutation({
+    mutationFn: toggleEmployeeStatus,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      Swal.fire({
+        icon: data.new_status === 'Active' ? 'success' : 'warning',
+        title: data.new_status === 'Active' ? 'সক্রিয় করা হয়েছে' : 'নিষ্ক্রিয় করা হয়েছে',
+        text: `${data.name}-এর অ্যাকাউন্ট এখন ${data.new_status === 'Active' ? 'Active' : 'Inactive'} করা হয়েছে।`,
+        timer: 2500,
+        showConfirmButton: false,
+      });
+    },
+    onError: (error) => {
+      Swal.fire('Error', error.response?.data?.message || 'Status update failed', 'error');
+    }
+  });
+
+  const handleToggleStatus = (emp) => {
+    const isActive = String(emp.status || 'Active').toLowerCase() === 'active';
+    Swal.fire({
+      title: isActive ? `"${emp.full_name}" কে Inactive করবেন?` : `"${emp.full_name}" কে Active করবেন?`,
+      html: isActive
+        ? '<p style="color:#6b7280;margin:0">এই কর্মী আর সিস্টেমে লগইন করতে পারবেন না।</p>'
+        : '<p style="color:#6b7280;margin:0">এই কর্মী আবার সিস্টেমে অ্যাক্সেস পাবেন।</p>',
+      icon: isActive ? 'warning' : 'question',
+      showCancelButton: true,
+      confirmButtonColor: isActive ? '#ef4444' : '#10b981',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: isActive ? 'হ্যাঁ, Inactive করুন' : 'হ্যাঁ, Active করুন',
+      cancelButtonText: 'বাতিল',
+    }).then((result) => {
+      if (result.isConfirmed) toggleStatusMutation.mutate(emp.id);
+    });
+  };
+
   const stats = useMemo(() => {
-    const active = employees.filter((emp) => String(emp.status || 'Active').toLowerCase() === 'active').length;
-    return {
-      total: employees.length,
-      active,
-      inactive: Math.max(employees.length - active, 0)
-    };
-  }, [employees]);
+    const active = allEmployees.filter((emp) => String(emp.status || 'Active').toLowerCase() === 'active').length;
+    return { total: allEmployees.length, active, inactive: Math.max(allEmployees.length - active, 0) };
+  }, [allEmployees]);
 
-  const handleFilterChange = (event) => {
-    setFilters((prev) => ({ ...prev, [event.target.name]: event.target.value }));
-  };
-
-  const handleReset = () => {
-    setFilters({ search: '', dept: '' });
-  };
+  const handleFilterChange = (e) => setFilters((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleReset = () => setFilters({ search: '', dept: '', status: 'all' });
 
   const openAddModal = async () => {
-    if (!canAddEmployee) {
-      Swal.fire(t('employees.unauthorizedTitle'), t('employees.unauthorizedAdd'), 'warning');
-      return;
-    }
+    if (!canAddEmployee) { Swal.fire(t('employees.unauthorizedTitle'), t('employees.unauthorizedAdd'), 'warning'); return; }
     setShowModal(true);
     setGeneratedId(t('employees.generating'));
     try {
       const nextId = await getNextEmployeeId();
       setGeneratedId(nextId);
-      setFormData((prev) => ({
-        ...prev,
-        employee_id: nextId,
-        role: 'Staff',
-        joining_date: new Date().toISOString().split('T')[0]
-      }));
-    } catch {
-      setGeneratedId(t('employees.generateError'));
-    }
+      setFormData((prev) => ({ ...prev, employee_id: nextId, role: 'Staff', joining_date: new Date().toISOString().split('T')[0] }));
+    } catch { setGeneratedId(t('employees.generateError')); }
   };
 
-  const handleInputChange = (event) => {
-    setFormData((prev) => ({ ...prev, [event.target.name]: event.target.value }));
-  };
+  const handleInputChange = (e) => setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleFileChange = (e) => setFormData((prev) => ({ ...prev, [e.target.name]: e.target.files[0] }));
 
-  const handleFileChange = (event) => {
-    setFormData((prev) => ({ ...prev, [event.target.name]: event.target.files[0] }));
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     const payload = new FormData();
-    Object.keys(formData).forEach((key) => {
-      if (formData[key] !== undefined && formData[key] !== null) {
-        payload.append(key, formData[key]);
-      }
-    });
+    Object.keys(formData).forEach((key) => { if (formData[key] !== undefined && formData[key] !== null) payload.append(key, formData[key]); });
     addMutation.mutate(payload);
   };
 
@@ -132,32 +128,28 @@ const Employees = () => {
     <>
       <section className="emp-hero">
         <div>
-          <span className="emp-chip">
-            <i className="fas fa-users-cog"></i>
-            {t('employees.heroTag')}
-          </span>
+          <span className="emp-chip"><i className="fas fa-users-cog"></i>{t('employees.heroTag')}</span>
           <h1>{t('employees.heroTitle')}</h1>
           <p>{t('employees.heroSubtitle')}</p>
         </div>
         <div className="emp-hero-side">
           <div className="emp-metrics">
-            <article>
+            <article style={{ cursor: 'pointer' }} onClick={() => setFilters(f => ({ ...f, status: 'all' }))}>
               <span>{t('employees.total')}</span>
               <strong>{stats.total}</strong>
             </article>
-            <article>
+            <article style={{ cursor: 'pointer' }} onClick={() => setFilters(f => ({ ...f, status: 'active' }))}>
               <span>{t('employees.active')}</span>
-              <strong>{stats.active}</strong>
+              <strong style={{ color: '#10b981' }}>{stats.active}</strong>
             </article>
-            <article>
+            <article style={{ cursor: 'pointer' }} onClick={() => setFilters(f => ({ ...f, status: 'inactive' }))}>
               <span>{t('employees.inactive')}</span>
-              <strong>{stats.inactive}</strong>
+              <strong style={{ color: '#ef4444' }}>{stats.inactive}</strong>
             </article>
           </div>
           {canAddEmployee && (
             <button className="emp-add-btn" onClick={openAddModal}>
-              <i className="fas fa-user-plus"></i>
-              {t('employees.addEmployee')}
+              <i className="fas fa-user-plus"></i>{t('employees.addEmployee')}
             </button>
           )}
         </div>
@@ -167,32 +159,20 @@ const Employees = () => {
         <form onSubmit={(e) => e.preventDefault()} className="emp-filter-form">
           <div className="emp-input with-icon">
             <i className="fas fa-search"></i>
-            <input
-              type="text"
-              name="search"
-              placeholder={t('employees.searchPlaceholder')}
-              value={filters.search}
-              onChange={handleFilterChange}
-            />
-            {filters.search && (
-              <button type="button" className="clear-btn" onClick={() => setFilters((prev) => ({ ...prev, search: '' }))}>
-                <i className="fas fa-times"></i>
-              </button>
-            )}
+            <input type="text" name="search" placeholder={t('employees.searchPlaceholder')} value={filters.search} onChange={handleFilterChange} />
+            {filters.search && (<button type="button" className="clear-btn" onClick={() => setFilters((prev) => ({ ...prev, search: '' }))}><i className="fas fa-times"></i></button>)}
           </div>
-
           <select name="dept" value={filters.dept} onChange={handleFilterChange}>
             <option value="">{t('employees.allDepartments')}</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.dept_name}>
-                {dept.dept_name}
-              </option>
-            ))}
+            {departments.map((dept) => (<option key={dept.id} value={dept.dept_name}>{dept.dept_name}</option>))}
           </select>
-
+          <select name="status" value={filters.status} onChange={handleFilterChange}>
+            <option value="all">সকল কর্মী</option>
+            <option value="active">Active কর্মী</option>
+            <option value="inactive">Inactive কর্মী</option>
+          </select>
           <button type="button" className="emp-btn secondary" onClick={handleReset}>
-            <i className="fas fa-rotate"></i>
-            {t('employees.reset')}
+            <i className="fas fa-rotate"></i>{t('employees.reset')}
           </button>
         </form>
       </section>
@@ -202,7 +182,6 @@ const Employees = () => {
           <h2>{t('employees.listTitle')}</h2>
           <p>{loading ? t('employees.loadingRecords') : t('employees.foundCount', { count: employees.length })}</p>
         </header>
-
         <div className="table-responsive">
           <table className="table align-middle mb-0 emp-table">
             <thead>
@@ -215,51 +194,34 @@ const Employees = () => {
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan="5" className="text-center py-5">
-                    <div className="spinner-border text-primary" role="status"></div>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && employees.length === 0 && (
-                <tr>
-                  <td colSpan="5" className="text-center py-5 text-muted">
-                    {t('employees.noEmployees')}
-                  </td>
-                </tr>
-              )}
-
-              {!loading &&
-                employees.map((user) => (
-                  <tr key={user.id}>
+              {loading && (<tr><td colSpan="5" className="text-center py-5"><div className="spinner-border text-primary" role="status"></div></td></tr>)}
+              {!loading && employees.length === 0 && (<tr><td colSpan="5" className="text-center py-5 text-muted">{t('employees.noEmployees')}</td></tr>)}
+              {!loading && employees.map((user) => {
+                const isActive = String(user.status || 'Active').toLowerCase() === 'active';
+                const isSelf = Number(user.id) === Number(loggedInUser?.id);
+                return (
+                  <tr key={user.id} style={{ opacity: isActive ? 1 : 0.6 }}>
                     <td>
                       <Link to={`/profile/${user.id}`} className="text-decoration-none emp-user-cell">
-                        <ImageWithFallback
-                          src={user.profile_pic && user.profile_pic !== 'default.png' ? `/uploads/${user.profile_pic}` : null}
-                          fallbackName={user.full_name}
-                          className="emp-avatar"
-                          alt={t('employees.profileAlt')}
-                          width="44px"
-                          height="44px"
-                        />
+                        <div style={{ position: 'relative', display: 'inline-block' }}>
+                          <ImageWithFallback
+                            src={user.profile_pic && user.profile_pic !== 'default.png' ? `/uploads/${user.profile_pic}` : null}
+                            fallbackName={user.full_name} className="emp-avatar" alt={t('employees.profileAlt')}
+                            width="44px" height="44px"
+                            style={{ filter: isActive ? 'none' : 'grayscale(100%)' }}
+                          />
+                          <span style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: '50%', background: isActive ? '#10b981' : '#9ca3af', border: '2px solid white' }} />
+                        </div>
                         <div>
-                          <strong>{user.full_name}</strong>
+                          <strong style={{ color: isActive ? undefined : '#9ca3af' }}>{user.full_name}</strong>
                           <small>{user.designation || t('employees.positionNa')}</small>
                         </div>
                       </Link>
                     </td>
                     <td>
                       <div className="emp-contact">
-                        <div>
-                          <i className="fas fa-phone"></i>
-                          {user.phone || t('employees.na')}
-                        </div>
-                        <div>
-                          <i className="fas fa-droplet"></i>
-                          {t('employees.bloodLabel')}: {user.blood_group || t('employees.bloodUnknown')}
-                        </div>
+                        <div><i className="fas fa-phone"></i>{user.phone || t('employees.na')}</div>
+                        <div><i className="fas fa-droplet"></i>{t('employees.bloodLabel')}: {user.blood_group || t('employees.bloodUnknown')}</div>
                       </div>
                     </td>
                     <td>
@@ -269,8 +231,8 @@ const Employees = () => {
                       </div>
                     </td>
                     <td>
-                      <span className={`emp-status ${String(user.status || 'Active').toLowerCase() === 'active' ? 'active' : 'inactive'}`}>
-                        {String(user.status || 'Active').toLowerCase() === 'active' ? t('employees.active') : t('employees.inactive')}
+                      <span className={`emp-status ${isActive ? 'active' : 'inactive'}`}>
+                        {isActive ? t('employees.active') : t('employees.inactive')}
                       </span>
                     </td>
                     <td>
@@ -278,15 +240,26 @@ const Employees = () => {
                         <Link title={t('employees.viewProfile')} to={`/profile/${user.id}`}>
                           <i className="fas fa-eye"></i>
                         </Link>
-                        {Number(user.id) === Number(loggedInUser?.id) && (
+                        {isSelf && (
                           <Link title={t('employees.editProfile')} to={`/edit-employee/${user.id}`} className="edit">
                             <i className="fas fa-user-edit"></i>
                           </Link>
                         )}
+                        {canAddEmployee && !isSelf && (
+                          <button
+                            title={isActive ? 'Inactive করুন' : 'Active করুন'}
+                            onClick={() => handleToggleStatus(user)}
+                            disabled={toggleStatusMutation.isPending}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px 7px', borderRadius: 7, color: isActive ? '#ef4444' : '#10b981', fontSize: 15, transition: 'all 0.2s' }}
+                          >
+                            <i className={`fas fa-${isActive ? 'user-slash' : 'user-check'}`}></i>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -295,17 +268,13 @@ const Employees = () => {
       <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" centered className="emp-modal">
         <Modal.Header closeButton className="border-0 pt-4 px-4 bg-white rounded-top-4">
           <Modal.Title className="fw-bold">
-            <i className="fas fa-user-plus text-primary me-2"></i>
-            {t('employees.modalTitle')}
+            <i className="fas fa-user-plus text-primary me-2"></i>{t('employees.modalTitle')}
           </Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4 bg-white rounded-bottom-4">
           <form onSubmit={handleSubmit}>
             <div className="row g-3">
-              <div className="col-12">
-                <div className="emp-form-section">{t('employees.sectionBasic')}</div>
-              </div>
-
+              <div className="col-12"><div className="emp-form-section">{t('employees.sectionBasic')}</div></div>
               <div className="col-md-4">
                 <label className="emp-form-label">{t('employees.employeeId')}</label>
                 <input type="text" name="employee_id" className="emp-form-input bg-light fw-bold text-primary" value={generatedId} readOnly />
@@ -322,20 +291,12 @@ const Employees = () => {
                 <label className="emp-form-label">{t('employees.phone')}</label>
                 <input type="text" name="phone" className="emp-form-input" onChange={handleInputChange} required />
               </div>
-
-              <div className="col-12 mt-2">
-                <div className="emp-form-section">{t('employees.sectionOfficial')}</div>
-              </div>
-
+              <div className="col-12 mt-2"><div className="emp-form-section">{t('employees.sectionOfficial')}</div></div>
               <div className="col-md-4">
                 <label className="emp-form-label">{t('employees.department')}</label>
                 <select name="department" className="emp-form-input" onChange={handleInputChange} required>
                   <option value="">{t('employees.selectDepartment')}</option>
-                  {departments.map((dept) => (
-                    <option key={dept.id} value={dept.dept_name}>
-                      {dept.dept_name}
-                    </option>
-                  ))}
+                  {departments.map((dept) => (<option key={dept.id} value={dept.dept_name}>{dept.dept_name}</option>))}
                 </select>
               </div>
               <div className="col-md-4">
@@ -358,20 +319,12 @@ const Employees = () => {
                   <option value="Inactive">{t('employees.inactive')}</option>
                 </select>
               </div>
-
-              <div className="col-12 mt-2">
-                <div className="emp-form-section">{t('employees.sectionAdditional')}</div>
-              </div>
-
+              <div className="col-12 mt-2"><div className="emp-form-section">{t('employees.sectionAdditional')}</div></div>
               <div className="col-md-4">
                 <label className="emp-form-label">{t('employees.bloodGroup')}</label>
                 <select name="blood_group" className="emp-form-input" onChange={handleInputChange}>
                   <option value="">{t('employees.select')}</option>
-                  {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((blood) => (
-                    <option key={blood} value={blood}>
-                      {blood}
-                    </option>
-                  ))}
+                  {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((blood) => (<option key={blood} value={blood}>{blood}</option>))}
                 </select>
               </div>
               <div className="col-md-4">
@@ -390,30 +343,18 @@ const Employees = () => {
                 <label className="emp-form-label">{t('employees.permanentAddress')}</label>
                 <textarea name="permanent_address" className="emp-form-input" rows="2" onChange={handleInputChange}></textarea>
               </div>
-
               <div className="col-md-6">
                 <label className="emp-form-label">{t('employees.joiningDate')}</label>
-                <input
-                  type="date"
-                  name="joining_date"
-                  className="emp-form-input"
-                  defaultValue={new Date().toISOString().split('T')[0]}
-                  onChange={handleInputChange}
-                />
+                <input type="date" name="joining_date" className="emp-form-input" defaultValue={new Date().toISOString().split('T')[0]} onChange={handleInputChange} />
               </div>
               <div className="col-md-6">
                 <label className="emp-form-label">{t('employees.profilePic')}</label>
                 <input type="file" name="profile_pic" className="emp-form-input" onChange={handleFileChange} accept="image/*" />
               </div>
             </div>
-
             <div className="mt-4 text-end">
-              <button type="button" className="emp-btn secondary me-2" onClick={() => setShowModal(false)}>
-                {t('employees.cancel')}
-              </button>
-              <button type="submit" className="emp-btn primary">
-                {t('employees.saveEmployee')}
-              </button>
+              <button type="button" className="emp-btn secondary me-2" onClick={() => setShowModal(false)}>{t('employees.cancel')}</button>
+              <button type="submit" className="emp-btn primary">{t('employees.saveEmployee')}</button>
             </div>
           </form>
         </Modal.Body>
