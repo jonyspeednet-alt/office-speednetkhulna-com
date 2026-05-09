@@ -74,3 +74,13 @@ pm2_logs*.txt
 # Test files (ops directory)
 ops/test.php
 .env
+
+# Sensitive runtime files (never commit these)
+cookies.txt
+*.cookies.txt
+audit_logs_*.txt
+audit_logs_dump.txt
+
+# PHP proxy files (use Nginx/Apache config instead)
+proxy_*.php
+
