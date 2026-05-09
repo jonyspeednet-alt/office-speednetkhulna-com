@@ -10,6 +10,12 @@ const money = (value) => Number(value || 0).toLocaleString('en-US', {
 });
 
 const moneyTk = (value) => `${money(value)} টাকা`;
+const PARTNER_TABS = {
+  distribution_partner: 'Distribution Partner',
+  channel_partner: 'Channel Partner',
+  mac_partner: 'MAC Partner'
+};
+
 const getDhakaMonth = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Dhaka',
@@ -23,6 +29,7 @@ const getDhakaMonth = () => {
 
 const MonthlySummary = () => {
   const [month, setMonth] = useState(getDhakaMonth());
+  const [activePartnerType, setActivePartnerType] = useState('distribution_partner');
   const [rows, setRows] = useState([]);
   const [search, setSearch] = useState('');
   const [totals, setTotals] = useState({ projected: 0, paid: 0, discount: 0, due: 0 });
@@ -37,7 +44,9 @@ const MonthlySummary = () => {
     try {
       setLoading(true);
       setError('');
-      const data = await getMonthlySummary(`${targetMonth}-01`);
+      const data = await getMonthlySummary(`${targetMonth}-01`, {
+        partner_type: activePartnerType
+      });
 
       if (Array.isArray(data)) {
         const legacyRows = data.map((item) => ({
@@ -77,7 +86,7 @@ const MonthlySummary = () => {
 
   useEffect(() => {
     load(month);
-  }, [month]);
+  }, [month, activePartnerType]);
 
   useEffect(() => {
     const beforePrint = () => {
@@ -182,7 +191,7 @@ const MonthlySummary = () => {
               <i className="fas fa-chart-pie me-2" />
               মাসিক বিলিং সামারি
             </h3>
-            <p className="summary-subtitle">সব রিসেলারের বিল, বকেয়া, জমা ও সমন্বয়</p>
+            <p className="summary-subtitle">{PARTNER_TABS[activePartnerType]} এর আলাদা বিল, বকেয়া, জমা ও সমন্বয়</p>
           </div>
 
           <div className="summary-controls">
@@ -216,6 +225,19 @@ const MonthlySummary = () => {
               <i className="fas fa-print" />
             </button>
           </div>
+        </div>
+
+        <div className="summary-partner-tabs no-print">
+          {Object.entries(PARTNER_TABS).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`btn btn-sm ${activePartnerType === key ? 'btn-dark' : 'btn-outline-dark'}`}
+              onClick={() => setActivePartnerType(key)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="summary-metrics no-print">

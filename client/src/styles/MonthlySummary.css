@@ -40,6 +40,13 @@
   flex-wrap: wrap;
 }
 
+.summary-partner-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
 .summary-search {
   position: relative;
   min-width: 220px;

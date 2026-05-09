@@ -32,9 +32,12 @@ export const getBillingLogs = async (reseller_id = '') => (await apiClient.get('
 export const addBillingLog = async (payload) => (await apiClient.post('/api/resellers/billing-logs', payload)).data;
 export const addDiscount = async (resellerId, payload) => (await apiClient.post(`/api/resellers/resellers/${resellerId}/discounts`, payload)).data;
 
-export const getMonthlySummary = async (month = '') =>
+export const getMonthlySummary = async (month = '', options = {}) =>
   (await apiClient.get('/api/resellers/monthly-summary', {
-    params: { month },
+    params: {
+      month,
+      ...(options.partner_type ? { partner_type: options.partner_type } : {})
+    },
     timeout: 60000
   })).data;
 

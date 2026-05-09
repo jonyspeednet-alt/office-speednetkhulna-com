@@ -198,13 +198,15 @@ const MONTHLY_SUMMARY_CACHE_TTL_MS = Math.max(
 
 const cacheKeyMonthlySummary = (month) =>
   `monthly_summary:${String(month || "").slice(0, 7)}`;
+const cacheKeyMonthlySummaryByPartner = (month, partnerType = "") =>
+  `${cacheKeyMonthlySummary(month)}:${partnerType || "all"}`;
 const extractYm = (v) => {
   const s = String(v || "").trim();
   const m = s.match(/^(\d{4})-(\d{2})/);
   return m ? `${m[1]}-${m[2]}` : null;
 };
-const getMonthlySummaryCached = (month) => {
-  const key = cacheKeyMonthlySummary(month);
+const getMonthlySummaryCachedByPartner = (month, partnerType = "") => {
+  const key = cacheKeyMonthlySummaryByPartner(month, partnerType);
   const hit = monthlySummaryCache.get(key);
   if (!hit) return null;
   if (hit.expiresAt <= Date.now()) {
@@ -213,8 +215,8 @@ const getMonthlySummaryCached = (month) => {
   }
   return hit.payload;
 };
-const setMonthlySummaryCached = (month, payload) => {
-  const key = cacheKeyMonthlySummary(month);
+const setMonthlySummaryCachedByPartner = (month, partnerType, payload) => {
+  const key = cacheKeyMonthlySummaryByPartner(month, partnerType);
   monthlySummaryCache.set(key, {
     payload,
     expiresAt: Date.now() + MONTHLY_SUMMARY_CACHE_TTL_MS,
@@ -227,6 +229,11 @@ const invalidateMonthlySummaryCache = (month = null) => {
     return;
   }
   monthlySummaryCache.delete(cacheKeyMonthlySummary(ym));
+  for (const key of monthlySummaryCache.keys()) {
+    if (key.startsWith(`${cacheKeyMonthlySummary(ym)}:`)) {
+      monthlySummaryCache.delete(key);
+    }
+  }
 };
 
 const getDhakaMonthYm = (date = new Date()) => {
@@ -985,8 +992,18 @@ const initialize = async () => {
         await pool.query(
           `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS joining_date DATE`,
         );
+        await pool.query(
+          `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS partner_type VARCHAR(40) NOT NULL DEFAULT 'distribution_partner'`,
+        );
+        await pool.query(
+          `UPDATE resellers
+           SET partner_type = ${normalizedPartnerTypeSql("COALESCE(partner_type, '')")}
+           WHERE partner_type IS NULL
+              OR partner_type = ''
+              OR partner_type <> ${normalizedPartnerTypeSql("COALESCE(partner_type, '')")}`,
+        );
       } catch (err) {
-        console.warn("resellers.joining_date init warning:", err.message);
+        console.warn("resellers joining_date/partner_type init warning:", err.message);
       }
       try {
         await pool.query(
@@ -1174,7 +1191,13 @@ const listResellers = async (req, res) => {
     }
     if (partnerTypeFilter) {
       params.push(partnerTypeFilter);
-      whereParts.push(`'distribution_partner' = $${params.length}`);
+      if (hasPartnerTypeColumn) {
+        whereParts.push(
+          `${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} = $${params.length}`,
+        );
+      } else {
+        whereParts.push(`'distribution_partner' = $${params.length}`);
+      }
     }
 
     const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
@@ -1188,7 +1211,7 @@ const listResellers = async (req, res) => {
         r.contact_no AS phone,
         r.pop_location,
         r.pop_location AS ip_address,
-        'distribution_partner' AS partner_type,
+        ${hasPartnerTypeColumn ? `${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} AS partner_type,` : `'distribution_partner' AS partner_type,`}
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
         COALESCE(r.ggc_bw,0)::numeric AS ggc_bw,
@@ -3392,7 +3415,16 @@ const getMonthlySummary = async (req, res) => {
     const rawMonth = String(req.query.month || getDhakaMonthYm());
     const selectedMonth = rawMonth.slice(0, 7);
     const monthStart = `${selectedMonth}-01`;
-    const cached = getMonthlySummaryCached(selectedMonth);
+    const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
+      () => hasResellerPartnerTypeColumn,
+    );
+    const partnerTypeFilter = normalizePartnerType(
+      req.query.partner_type || "",
+    );
+    const cached = getMonthlySummaryCachedByPartner(
+      selectedMonth,
+      partnerTypeFilter,
+    );
     if (cached) {
       const elapsedMs = Date.now() - startedAt;
       console.log(
@@ -3414,11 +3446,13 @@ const getMonthlySummary = async (req, res) => {
            COALESCE(r.reseller_name, r.company_name) AS name,
            r.company_name,
            r.contact_no,
+           ${hasPartnerTypeColumn ? `${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")}` : `'distribution_partner'`} AS partner_type,
            COALESCE(r.previous_month_due, 0)::numeric AS previous_month_due,
            COALESCE(r.current_projected_bill, 0)::numeric AS current_projected_bill,
            r.next_pay_date
          FROM resellers r
          WHERE COALESCE(r.status, 'active') = 'active'
+           ${partnerTypeFilter ? `AND ${hasPartnerTypeColumn ? normalizedPartnerTypeSql("COALESCE(r.partner_type, '')") : `'distribution_partner'`} = $3` : ""}
        ),
        month_bills AS (
          SELECT
@@ -3470,6 +3504,7 @@ const getMonthlySummary = async (req, res) => {
          ar.name,
          ar.company_name AS company,
          ar.contact_no AS contact,
+         ar.partner_type,
          CASE
            WHEN mb.reseller_id IS NOT NULL THEN COALESCE(mb.amount, 0) + COALESCE(mb.adjustment, 0)
            ELSE COALESCE(NULLIF(ar.current_projected_bill, 0), COALESCE(lb.amount, 0) + COALESCE(lb.adjustment, 0), 0)
@@ -3497,10 +3532,12 @@ const getMonthlySummary = async (req, res) => {
          (mb.reseller_id IS NOT NULL) AS is_generated
        FROM active_resellers ar
        LEFT JOIN month_bills mb ON mb.reseller_id = ar.id
-       LEFT JOIN latest_bills lb ON lb.reseller_id = ar.id
-       LEFT JOIN month_logs ml ON ml.reseller_id = ar.id
-       ORDER BY ar.name ASC`,
-      [monthStart, selectedMonth],
+      LEFT JOIN latest_bills lb ON lb.reseller_id = ar.id
+      LEFT JOIN month_logs ml ON ml.reseller_id = ar.id
+      ORDER BY ar.name ASC`,
+      partnerTypeFilter
+        ? [monthStart, selectedMonth, partnerTypeFilter]
+        : [monthStart, selectedMonth],
     );
 
     let rows = dataResult.rows.map((r) => ({
@@ -3508,6 +3545,7 @@ const getMonthlySummary = async (req, res) => {
       name: r.name,
       company: r.company,
       contact: r.contact,
+      partner_type: r.partner_type,
       projected: Math.round(parseAmount(r.projected, 0) * 100) / 100,
       prev_due: Math.round(parseAmount(r.prev_due, 0) * 100) / 100,
       total_bill: Math.round(parseAmount(r.total_bill, 0) * 100) / 100,
@@ -3582,6 +3620,7 @@ const getMonthlySummary = async (req, res) => {
 
     const payload = {
       month: selectedMonth,
+      partner_type: partnerTypeFilter || "all",
       totals: {
         projected: Math.round(totals.projected * 100) / 100,
         paid: Math.round(totals.paid * 100) / 100,
@@ -3590,7 +3629,7 @@ const getMonthlySummary = async (req, res) => {
       },
       rows,
     };
-    setMonthlySummaryCached(selectedMonth, payload);
+    setMonthlySummaryCachedByPartner(selectedMonth, partnerTypeFilter, payload);
 
     const elapsedMs = Date.now() - startedAt;
     const warnThreshold = isProdEnv ? 2000 : 5000;
