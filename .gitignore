@@ -72,5 +72,4 @@ exports/reports/
 pm2_logs*.txt
 
 # Test files (ops directory)
-ops/proxy.php
 ops/test.php
