@@ -154,13 +154,19 @@ const ResellerList = () => {
                 <thead>
                   <tr>
                     <th>Reseller / Company</th>
-                    <th>NTTN Link</th>
-                    <th>IIG</th>
-                    <th>BDIX</th>
-                    <th>GGC</th>
-                    <th>FNA</th>
-                    <th>CDN</th>
-                    <th>Other</th>
+                    {activeTab !== 'channel_partner' ? (
+                      <>
+                        <th>NTTN Link</th>
+                        <th>IIG</th>
+                        <th>BDIX</th>
+                        <th>GGC</th>
+                        <th>FNA</th>
+                        <th>CDN</th>
+                        <th>Other</th>
+                      </>
+                    ) : (
+                      <th>Total Users</th>
+                    )}
                     <th>Location</th>
                     <th>Status</th>
                     <th className="text-end">Action</th>
@@ -189,27 +195,38 @@ const ResellerList = () => {
                         <div className="fw-bold">{r.name}</div>
                         <small className="text-muted">{r.company_name || r.reseller_code}</small>
                       </td>
-                      <td>
-                        {r.nttn_link ? (
-                          <a
-                            href={r.nttn_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-decoration-none text-primary fw-semibold"
-                            title={r.nttn_link}
-                          >
-                            {r.nttn_link}
-                          </a>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                      <td><span className="badge-soft bg-primary-subtle text-primary">{bw(r.iig_bw)}</span></td>
-                      <td><span className="badge-soft bg-success-subtle text-success">{bw(r.bdix_bw)}</span></td>
-                      <td><span className="badge-soft bg-warning-subtle text-warning-emphasis">{bw(r.ggc_bw)}</span></td>
-                      <td><span className="badge-soft bg-info-subtle text-info-emphasis">{bw(r.fna_bw)}</span></td>
-                      <td><span className="badge-soft bg-danger-subtle text-danger">{bw(r.cdn_bw)}</span></td>
-                      <td><span className="badge-soft bg-secondary-subtle text-secondary">{bw(r.bcdn_bw)}</span></td>
+                      {activeTab !== 'channel_partner' ? (
+                        <>
+                          <td>
+                            {r.nttn_link ? (
+                              <a
+                                href={r.nttn_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-decoration-none text-primary fw-semibold"
+                                title={r.nttn_link}
+                              >
+                                {r.nttn_link}
+                              </a>
+                            ) : (
+                              <span className="text-muted">-</span>
+                            )}
+                          </td>
+                          <td><span className="badge-soft bg-primary-subtle text-primary">{bw(r.iig_bw)}</span></td>
+                          <td><span className="badge-soft bg-success-subtle text-success">{bw(r.bdix_bw)}</span></td>
+                          <td><span className="badge-soft bg-warning-subtle text-warning-emphasis">{bw(r.ggc_bw)}</span></td>
+                          <td><span className="badge-soft bg-info-subtle text-info-emphasis">{bw(r.fna_bw)}</span></td>
+                          <td><span className="badge-soft bg-danger-subtle text-danger">{bw(r.cdn_bw)}</span></td>
+                          <td><span className="badge-soft bg-secondary-subtle text-secondary">{bw(r.bcdn_bw)}</span></td>
+                        </>
+                      ) : (
+                        <td>
+                          <span className="badge bg-light text-dark border shadow-sm px-3 py-2">
+                            <i className="fas fa-users me-2 text-primary"></i>
+                            {r.channel_user_count || 0} Users
+                          </span>
+                        </td>
+                      )}
                       <td>{r.pop_location || '-'}</td>
                       <td>
                         <span className={`badge ${String(r.status || 'active').toLowerCase() === 'active' ? 'bg-success-subtle text-success-emphasis' : 'bg-danger-subtle text-danger-emphasis'}`}>

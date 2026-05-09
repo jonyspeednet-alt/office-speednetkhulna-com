@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { addBillingLog, addDiscount, getResellerProfileDetails, updateReseller } from '../services/resellerService';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -107,6 +107,7 @@ const ResellerProfile = () => {
         otc_charge: Number(r.otc_charge || 0),
         real_ip_count: Number(r.real_ip_count || 0),
         real_ip_price: Number(r.real_ip_price || 0),
+        channel_user_count: Number(r.channel_user_count || 0),
         joining_date: toDhakaDateInputValue(r.joining_date || r.created_at)
       });
     } catch (e) {
@@ -116,6 +117,12 @@ const ResellerProfile = () => {
   };
 
   useEffect(() => { load(); }, [profileId]);
+
+  useEffect(() => {
+    if (data && data.reseller?.partner_type === 'channel_partner' && activeTab === 'bandwidth') {
+      setActiveTab(data.permissions?.can_view_financials ? 'statement' : 'requests');
+    }
+  }, [data, activeTab]);
 
   const can = data?.permissions || {};
   const reseller = data?.reseller || {};
@@ -306,16 +313,20 @@ const ResellerProfile = () => {
             <ul className="list-group list-group-flush small">
               <li className="list-group-item px-0"><strong>কোম্পানি:</strong> {reseller.company_name || '-'}</li>
               <li className="list-group-item px-0"><strong>সংযোগ:</strong> {reseller.nttn_type || '-'} {reseller.connection_type ? `, ${reseller.connection_type}` : ''}</li>
-              <li className="list-group-item px-0">
-                <strong>NTTN Link:</strong>{' '}
-                {reseller.nttn_link ? (
-                  <a href={reseller.nttn_link} target="_blank" rel="noreferrer" className="text-decoration-none">
-                    {reseller.nttn_link}
-                  </a>
-                ) : (
-                  '-'
-                )}
-              </li>
+              {reseller.partner_type === 'channel_partner' ? (
+                <li className="list-group-item px-0"><strong>Total Users:</strong> {Number(reseller.channel_user_count || 0).toLocaleString('bn-BD')}</li>
+              ) : (
+                <li className="list-group-item px-0">
+                  <strong>NTTN Link:</strong>{' '}
+                  {reseller.nttn_link ? (
+                    <a href={reseller.nttn_link} target="_blank" rel="noreferrer" className="text-decoration-none">
+                      {reseller.nttn_link}
+                    </a>
+                  ) : (
+                    '-'
+                  )}
+                </li>
+              )}
               <li className="list-group-item px-0"><strong>ফোন:</strong> {reseller.phone || '-'}</li>
               <li className="list-group-item px-0"><strong>Joining Date:</strong> {fmtDate(reseller.joining_date)}</li>
               <li className="list-group-item px-0"><strong>লোকেশন:</strong> {reseller.pop_location || '-'}</li>
@@ -341,7 +352,9 @@ const ResellerProfile = () => {
           <div className="card">
             <div className="card-header border-0 bg-transparent p-3 d-flex justify-content-between align-items-center">
               <ul className="nav nav-pills card-header-pills">
-                <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'bandwidth' ? 'active' : ''}`} onClick={() => setActiveTab('bandwidth')}>Bandwidth</button></li>
+                {reseller.partner_type !== 'channel_partner' && (
+                  <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'bandwidth' ? 'active' : ''}`} onClick={() => setActiveTab('bandwidth')}>Bandwidth</button></li>
+                )}
                 {can.can_view_financials && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'statement' ? 'active' : ''}`} onClick={() => setActiveTab('statement')}>Statement</button></li>}
                 <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'requests' ? 'active' : ''}`} onClick={() => setActiveTab('requests')}>Requests</button></li>
               </ul>
@@ -541,45 +554,59 @@ const ResellerProfile = () => {
             <div className="col-md-6"><label className="form-label fw-semibold">রিসেলার স্ট্যাটাস</label><select className="form-select" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}><option value="active">Active</option><option value="suspended">Suspended</option><option value="inactive">Inactive</option></select></div>
             <div className="col-md-6"><label className="form-label fw-semibold text-danger">নতুন পাসওয়ার্ড (ঐচ্ছিক)</label><input type="password" className="form-control" value={editForm.password || ''} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} placeholder="ফাঁকা রাখলে অপরিবর্তিত থাকবে" /></div>
 
-            <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ব্যান্ডউইথ রেট (Tk/Month)</h6>
+            {editForm.partner_type === 'channel_partner' ? (
+              <>
+                <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ইউজার তথ্য</h6>
+                <div className="col-md-6"><label className="form-label fw-semibold">Total Users</label><input type="number" min="0" className="form-control" value={editForm.channel_user_count} onChange={(e) => setEditForm({ ...editForm, channel_user_count: e.target.value })} /></div>
+              </>
+            ) : (
+              <>
+                <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ব্যান্ডউইথ রেট (Tk/Month)</h6>
 
-            {['iig','bdix','ggc','fna','cdn','bcdn','nttn'].map((k) => (
-              <React.Fragment key={k}>
-                <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} BW</label><input type="number" className="form-control" value={editForm[`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]} onChange={(e) => setEditForm({ ...editForm, [`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]: e.target.value })} /></div>
-                <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} Rate</label><input type="number" className="form-control" value={editForm[`rate_${k}`]} onChange={(e) => setEditForm({ ...editForm, [`rate_${k}`]: e.target.value })} /></div>
-              </React.Fragment>
-            ))}
+                {['iig','bdix','ggc','fna','cdn','bcdn','nttn'].map((k) => (
+                  <React.Fragment key={k}>
+                    <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} BW</label><input type="number" className="form-control" value={editForm[`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]} onChange={(e) => setEditForm({ ...editForm, [`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]: e.target.value })} /></div>
+                    <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} Rate</label><input type="number" className="form-control" value={editForm[`rate_${k}`]} onChange={(e) => setEditForm({ ...editForm, [`rate_${k}`]: e.target.value })} /></div>
+                  </React.Fragment>
+                ))}
+              </>
+            )}
 
             <div className="col-md-4"><label className="form-label fw-semibold">Projected Bill</label><input type="number" className="form-control" value={editForm.monthly_rate} onChange={(e) => setEditForm({ ...editForm, monthly_rate: e.target.value })} /></div>
             <div className="col-md-4"><label className="form-label fw-semibold">Previous Due</label><input type="number" className="form-control" value={editForm.due_amount} onChange={(e) => setEditForm({ ...editForm, due_amount: e.target.value })} /></div>
-            <div className="col-md-4"><label className="form-label fw-semibold">NTTN Link</label><input className="form-control" value={editForm.nttn_link} onChange={(e) => setEditForm({ ...editForm, nttn_link: e.target.value })} /></div>
+            {editForm.partner_type !== 'channel_partner' && (
+              <div className="col-md-4"><label className="form-label fw-semibold">NTTN Link</label><input className="form-control" value={editForm.nttn_link} onChange={(e) => setEditForm({ ...editForm, nttn_link: e.target.value })} /></div>
+            )}
             <div className="col-md-6"><label className="form-label fw-semibold">Real IP Quantity</label><input type="number" min="0" className="form-control" value={editForm.real_ip_count} onChange={(e) => setEditForm({ ...editForm, real_ip_count: e.target.value })} /></div>
             <div className="col-md-6"><label className="form-label fw-semibold">Real IP Unit Price</label><input type="number" step="0.01" min="0" className="form-control" value={editForm.real_ip_price} onChange={(e) => setEditForm({ ...editForm, real_ip_price: e.target.value })} /></div>
-
-            <div className="col-md-6">
-              <label className="form-label fw-semibold d-block">NTTN Type</label>
-              {['D2D', 'OHF', 'Longhaul'].map((item) => {
-                const checked = splitCsv(editForm.nttn_type).includes(item);
-                return (
-                  <div key={item} className="form-check form-check-inline">
-                    <input className="form-check-input" type="checkbox" id={`nttn_${item}`} checked={checked} onChange={() => toggleCsvValue('nttn_type', item)} />
-                    <label className="form-check-label" htmlFor={`nttn_${item}`}>{item}</label>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="col-md-6">
-              <label className="form-label fw-semibold d-block">Connection Type</label>
-              {['Speed Net', 'L3'].map((item) => {
-                const checked = splitCsv(editForm.connection_type).includes(item);
-                return (
-                  <div key={item} className="form-check form-check-inline">
-                    <input className="form-check-input" type="checkbox" id={`con_${item}`} checked={checked} onChange={() => toggleCsvValue('connection_type', item)} />
-                    <label className="form-check-label" htmlFor={`con_${item}`}>{item}</label>
-                  </div>
-                );
-              })}
-            </div>
+            {editForm.partner_type !== 'channel_partner' && (
+              <>
+                <div className="col-md-6">
+                  <label className="form-label fw-semibold d-block">NTTN Type</label>
+                  {['D2D', 'OHF', 'Longhaul'].map((item) => {
+                    const checked = splitCsv(editForm.nttn_type).includes(item);
+                    return (
+                      <div key={item} className="form-check form-check-inline">
+                        <input className="form-check-input" type="checkbox" id={`nttn_${item}`} checked={checked} onChange={() => toggleCsvValue('nttn_type', item)} />
+                        <label className="form-check-label" htmlFor={`nttn_${item}`}>{item}</label>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label fw-semibold d-block">Connection Type</label>
+                  {['Speed Net', 'L3'].map((item) => {
+                    const checked = splitCsv(editForm.connection_type).includes(item);
+                    return (
+                      <div key={item} className="form-check form-check-inline">
+                        <input className="form-check-input" type="checkbox" id={`con_${item}`} checked={checked} onChange={() => toggleCsvValue('connection_type', item)} />
+                        <label className="form-check-label" htmlFor={`con_${item}`}>{item}</label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             <div className="col-12 text-end">
               <button type="button" className="btn btn-light me-2" onClick={() => setShowEdit(false)}>বন্ধ করুন</button>
