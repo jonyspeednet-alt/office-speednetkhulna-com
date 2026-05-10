@@ -151,8 +151,20 @@ jobs:
             export PM2_HOME="/home/speeuvmq/.pm2"
             export PATH="/home/speeuvmq/.nvm/versions/node/v24.13.1/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
             PM2_BIN="$(command -v pm2 || ls -1 /home/speeuvmq/.nvm/versions/node/*/bin/pm2 2>/dev/null | tail -n 1)"
-            $PM2_BIN reload ecosystem.config.js --only office-api-a,office-api-b --env production --update-env || $PM2_BIN start ecosystem.config.js --only office-api-a,office-api-b --env production
+
+            if $PM2_BIN pid office-api-a >/dev/null 2>&1 && $PM2_BIN pid office-api-b >/dev/null 2>&1; then
+              echo "Reloading existing PM2 processes..."
+              $PM2_BIN reload ecosystem.config.js --only office-api-a,office-api-b --env production --update-env
+            else
+              echo "Starting PM2 processes..."
+              $PM2_BIN start ecosystem.config.js --only office-api-a,office-api-b --env production
+            fi
+
             $PM2_BIN save
+            $PM2_BIN list
+
+            echo "Waiting for processes to settle..."
+            sleep 5
 
             echo "Checking backend health..."
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
@@ -163,6 +175,8 @@ jobs:
               fi
               if [ "$attempt" = "10" ]; then
                 echo "Backend health check failed"
+                $PM2_BIN logs office-api-a --lines 50 --nostream || true
+                $PM2_BIN logs office-api-b --lines 50 --nostream || true
                 pm2 status office-api-a office-api-b --no-color || true
                 exit 1
               fi

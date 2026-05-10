@@ -1,12 +1,12 @@
 const { Pool } = require('pg');
 const path = require('path');
 
-// Load env based on NODE_ENV - support .env.local for development
-const envFile = process.env.NODE_ENV === 'production' ? '.env' : '.env.local';
+// Load env based on NODE_ENV - support .env.production for production and .env.local for development
+const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.local';
 const envPath = path.resolve(__dirname, '../../', envFile);
 require('dotenv').config({ path: envPath });
 
-// Fallback to .env if .env.local doesn't exist
+// Fallback to .env if the chosen env file doesn't exist
 const fs = require('fs');
 if (!fs.existsSync(envPath)) {
   require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
