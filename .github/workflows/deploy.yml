@@ -94,7 +94,7 @@ jobs:
               git init
               git remote add origin $REPO_URL
               git fetch origin
-              git checkout -f -t origin/main
+              git reset --hard origin/main
             else
               echo "Fresh clone..."
               git clone $REPO_URL $APP_DIR
