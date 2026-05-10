@@ -87,9 +87,16 @@ jobs:
 
             if [ -d "$APP_DIR/.git" ]; then
               echo "Pulling latest code..."
-              cd $APP_DIR && git pull origin main
+              cd $APP_DIR && git fetch origin && git reset --hard origin/main
+            elif [ -d "$APP_DIR" ]; then
+              echo "Folder exists but not a git repo - initializing..."
+              cd $APP_DIR
+              git init
+              git remote add origin $REPO_URL
+              git fetch origin
+              git checkout -f -t origin/main
             else
-              echo "First deploy - cloning repository..."
+              echo "Fresh clone..."
               git clone $REPO_URL $APP_DIR
               cd $APP_DIR
             fi
