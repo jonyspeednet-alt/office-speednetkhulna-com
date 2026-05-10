@@ -347,6 +347,20 @@ const parseYMD = (value) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+const toDateOnlyString = (value) => {
+  if (!value) return "";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const parsed = parseYMD(raw);
+  if (!parsed) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+};
+
 const getResellerRecurringMonthlyTotal = (reseller = {}) => {
   const bandwidthTotal =
     parseAmount(reseller.iig_bw, 0) * parseAmount(reseller.rate_iig, 0) +
@@ -553,7 +567,7 @@ const calculateMonthlyBillBreakdown = async (
       if (!rateHistoryByType[type]) rateHistoryByType[type] = [];
       rateHistoryByType[type].push({
         rate: Number(r.rate || 0),
-        effective_date: String(r.effective_date).slice(0, 10),
+        effective_date: toDateOnlyString(r.effective_date),
       });
     }
   } catch (e) {
@@ -574,7 +588,8 @@ const calculateMonthlyBillBreakdown = async (
       [resellerId],
     );
     for (const row of changeLogResult.rows) {
-      const dateStr = String(row.effective_date).slice(0, 10);
+      const dateStr = toDateOnlyString(row.effective_date);
+      if (!dateStr) continue;
       const prevColMap = {
         IIG: 'prev_rate_iig', BDIX: 'prev_rate_bdix', GGC: 'prev_rate_ggc',
         FNA: 'prev_rate_fna', CDN: 'prev_rate_cdn', BCDN: 'prev_rate_bcdn', NTTN: 'prev_rate_nttn',

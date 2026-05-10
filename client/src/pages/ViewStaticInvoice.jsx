@@ -17,6 +17,7 @@ const StatusBadge = ({ type }) => {
   if (type === 'increase') return <span className="inv-badge badge-increase">{t('invoice.increase')}</span>;
   if (type === 'decrease') return <span className="inv-badge badge-decrease">{t('invoice.decrease')}</span>;
   if (type === 'standard') return <span className="inv-badge badge-standard">{t('invoice.currentPkg')}</span>;
+  if (type === 'rate_change') return <span className="inv-badge badge-rate-change">রেট পরিবর্তন</span>;
   return <span className="inv-badge badge-standard">-</span>;
 };
 
@@ -151,11 +152,6 @@ const ViewStaticInvoice = () => {
     const displayItems = Array.isArray(items) ? items.filter((item) => item?.desc !== 'OTC') : [];
     const otcAmount = otcItems.reduce((sum, item) => sum + Number(item?.total || 0), 0);
     const runningBillAmount = Math.max(0, Number(totalAmount || 0) - otcAmount);
-    const typeCounts = {};
-    displayItems.forEach((item) => {
-      typeCounts[item?.desc] = (typeCounts[item?.desc] || 0) + 1;
-    });
-
     return {
       reseller,
       bill,
@@ -169,18 +165,16 @@ const ViewStaticInvoice = () => {
       adjustment,
       adjustmentNote,
       hasLegacyAdjustment,
-      netPayable,
-      typeCounts
+      netPayable
     };
   }, [data]);
 
   if (loading) return <div className="container py-5 text-center">{t('invoice.loading')}</div>;
   if (error || !normalized) return <div className="container py-5 text-center text-danger">{error || t('invoice.staticNotFound')}</div>;
 
-  const { reseller, bill, items, otcAmount, runningBillAmount, totalPaid, totalDiscount, totalAmount, prevDue, adjustment, adjustmentNote, hasLegacyAdjustment, netPayable, typeCounts } = normalized;
+  const { reseller, bill, items, otcAmount, runningBillAmount, totalPaid, totalDiscount, totalAmount, prevDue, adjustment, adjustmentNote, hasLegacyAdjustment, netPayable } = normalized;
   const monthName = toMonthName(data?.month || bill?.bill_month);
   const invoiceDate = toInvoiceDate(bill?.created_at || data?.created_at);
-  const typeShown = {};
 
   return (
     <div className="container-fluid py-3 reseller-page">
@@ -242,21 +236,64 @@ const ViewStaticInvoice = () => {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item, idx) => {
-                  const isFirst = !typeShown[item.desc];
-                  if (isFirst) typeShown[item.desc] = true;
-                  return (
-                    <tr key={idx}>
-                      {isFirst && <td rowSpan={typeCounts[item.desc] || 1} className="fw-bold align-middle">{item.desc}</td>}
-                      <td className="text-center"><StatusBadge type={item.change_type} /></td>
-                      <td><small className="text-muted">{item.date_range}</small></td>
-                      <td className="text-center">{item.bw}</td>
-                      <td className="text-center">{fmt(item.rate)}</td>
-                      <td className="text-center">{item.days}</td>
-                      <td className="text-end fw-bold">{fmt(item.total)}</td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  const groups = {};
+                  items.forEach((item) => {
+                    if (!groups[item.desc]) groups[item.desc] = [];
+                    groups[item.desc].push(item);
+                  });
+
+                  const rows = [];
+                  Object.entries(groups).forEach(([desc, segItems]) => {
+                    const isMulti = segItems.length > 1;
+                    const subtotal = segItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+
+                    segItems.forEach((item, segmentIndex) => {
+                      const isFirst = segmentIndex === 0;
+                      rows.push(
+                        <tr key={`${desc}-${segmentIndex}`} className={isMulti ? 'inv-segment-row' : ''}>
+                          {isFirst && (
+                            <td rowSpan={isMulti ? segItems.length + 1 : 1} className="fw-bold align-middle">{desc}</td>
+                          )}
+                          <td className="text-center"><StatusBadge type={item.change_type} /></td>
+                          <td><small className="text-muted">{item.date_range}</small></td>
+                          <td className="text-center">{item.bw}</td>
+                          <td className="text-center">
+                            {fmt(item.rate)}
+                            {isMulti && segmentIndex > 0 && (() => {
+                              const prevRate = segItems[segmentIndex - 1].rate;
+                              if (Number(item.rate) !== Number(prevRate)) {
+                                return (
+                                  <span className={`ms-1 small ${Number(item.rate) > Number(prevRate) ? 'text-danger' : 'text-success'}`}>
+                                    {Number(item.rate) > Number(prevRate) ? '▲' : '▼'}
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </td>
+                          <td className="text-center">{item.days}</td>
+                          <td className="text-end fw-bold">{fmt(item.total)}</td>
+                        </tr>
+                      );
+                    });
+
+                    if (isMulti) {
+                      rows.push(
+                        <tr key={`${desc}-subtotal`} className="inv-subtotal-row">
+                          <td colSpan={5} className="text-end text-muted" style={{ fontSize: 11, paddingTop: 6, paddingBottom: 6 }}>
+                            <i className="fas fa-equals me-1" />{desc} মোট ({segItems.length}টি সেগমেন্ট)
+                          </td>
+                          <td className="text-end fw-bold" style={{ paddingTop: 6, paddingBottom: 6 }}>
+                            {fmt(subtotal)}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  });
+
+                  return rows;
+                })()}
               </tbody>
             </table>
           </div>
