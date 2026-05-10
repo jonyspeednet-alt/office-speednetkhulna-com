@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import { getInvoice, getInvoiceByBillId, getResellers, sendInvoiceEmail, sendInvoiceEmailByBillId, getResellerRateChangeLogs } from '../services/resellerService';
@@ -347,7 +347,15 @@ const Invoice = () => {
                                 {desc}
                               </td>
                             )}
-                            <td className="text-center"><StatusBadge type={item.change_type} /></td>
+                            <td className="text-center">
+                              {item.change_type && item.change_type.startsWith('প্যাকেজ') ? (
+                                <span className={`inv-badge ${item.change_type.includes('বৃদ্ধি') ? 'badge-increase' : 'badge-decrease'}`}>
+                                  {item.change_type}
+                                </span>
+                              ) : (
+                                <StatusBadge type={item.change_type} />
+                              )}
+                            </td>
                             <td><small className="text-muted">{item.date_range}</small></td>
                             <td className="text-center">{item.bw}</td>
                             <td className="text-center">
