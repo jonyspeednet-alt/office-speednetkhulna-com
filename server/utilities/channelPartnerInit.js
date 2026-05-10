@@ -11,6 +11,11 @@ const initChannelPartnerTables = async () => {
     `);
 
     await pool.query(`
+      ALTER TABLE resellers
+        ADD COLUMN IF NOT EXISTS channel_user_count INTEGER DEFAULT 0
+    `);
+
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS channel_partner_users (
         id SERIAL PRIMARY KEY,
         reseller_id INT NOT NULL,

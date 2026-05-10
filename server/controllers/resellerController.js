@@ -18,6 +18,9 @@ let partnerTypeColumnChecked = false;
 let hasResellerOtcAppliedMonthColumn = false;
 let otcAppliedMonthColumnChecked = false;
 
+let hasChannelPartnerColumns = false;
+let channelPartnerColumnsChecked = false;
+
 const normalizeRole = (role) =>
   String(role || "")
     .trim()
@@ -437,6 +440,25 @@ const detectOtcAppliedMonthColumn = async () => {
       "otc_charge_applied_month schema detect warning:",
       err.message,
     );
+  }
+};
+
+const detectChannelPartnerColumns = async () => {
+  if (channelPartnerColumnsChecked) return;
+  try {
+    const result = await pool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'resellers'
+         AND column_name IN ('channel_user_count', 'profit_share_percentage')`,
+    );
+    const found = result.rows.map((r) => r.column_name);
+    hasChannelPartnerColumns = found.includes('channel_user_count') && found.includes('profit_share_percentage');
+    channelPartnerColumnsChecked = true;
+  } catch (err) {
+    hasChannelPartnerColumns = false;
+    channelPartnerColumnsChecked = true;
+    console.warn("channel partner columns detect warning:", err.message);
   }
 };
 
@@ -988,6 +1010,9 @@ const initialize = async () => {
       if (!otcAppliedMonthColumnChecked) {
         await detectOtcAppliedMonthColumn();
       }
+      if (!channelPartnerColumnsChecked) {
+        await detectChannelPartnerColumns();
+      }
       try {
         await pool.query(
           `ALTER TABLE resellers ADD COLUMN IF NOT EXISTS joining_date DATE`,
@@ -1025,6 +1050,13 @@ const initialize = async () => {
         );
       } catch (err) {
         console.warn("resellers otc/real_ip init warning:", err.message);
+      }
+      try {
+        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS channel_user_count INTEGER DEFAULT 0`);
+        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS profit_share_percentage NUMERIC(5,2) DEFAULT 0`);
+        await detectChannelPartnerColumns();
+      } catch (err) {
+        console.warn("resellers channel_partner columns init warning:", err.message);
       }
       await detectJoiningDateColumn();
       await detectPartnerTypeColumn();
@@ -1701,6 +1733,7 @@ const getResellerProfileDetails = async (req, res) => {
     const hasPartnerTypeColumn = await detectPartnerTypeColumn().then(
       () => hasResellerPartnerTypeColumn,
     );
+    await detectChannelPartnerColumns();
     const { id } = req.params;
     const perms = req.user?.permissions || {};
     const isAdmin = isAdminRole(req.user) || !!perms.all_access;
@@ -1752,8 +1785,8 @@ const getResellerProfileDetails = async (req, res) => {
         ${hasResellerOtcAppliedMonthColumn ? `r.otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(r.real_ip_count,0)::int AS real_ip_count,
         COALESCE(r.real_ip_price,0)::numeric AS real_ip_price,
-        COALESCE(r.channel_user_count,0)::int AS channel_user_count,
-        COALESCE(r.profit_share_percentage,0)::numeric AS profit_share_percentage,
+        ${hasChannelPartnerColumns ? `COALESCE(r.channel_user_count,0)::int AS channel_user_count,` : `0::int AS channel_user_count,`}
+        ${hasChannelPartnerColumns ? `COALESCE(r.profit_share_percentage,0)::numeric AS profit_share_percentage,` : `0::numeric AS profit_share_percentage,`}
         r.next_pay_date,
         r.created_at,
         ${joiningDateExpr("r")} AS joining_date
