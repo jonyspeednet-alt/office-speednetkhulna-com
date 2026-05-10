@@ -43,6 +43,8 @@ jobs:
       - name: Install server dependencies
         working-directory: server
         run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
 
       - name: Install client dependencies
         working-directory: client
@@ -81,32 +83,48 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           port: 21098
           script: |
-            set -e
+            set -euo pipefail
             APP_DIR="/home/speeuvmq/office_app"
+            OFFICE_DOMAIN_ROOT="/home/speeuvmq/office.speednetkhulna.com"
             REPO_URL="https://github.com/jonyspeednet-alt/office-speednetkhulna-com.git"
 
             if [ -d "$APP_DIR/.git" ]; then
               echo "Pulling latest code..."
-              cd $APP_DIR && git fetch origin && git reset --hard origin/main
+              cd "$APP_DIR" && git fetch origin && git reset --hard origin/main
             elif [ -d "$APP_DIR" ]; then
               echo "Folder exists but not a git repo - initializing..."
-              cd $APP_DIR
+              cd "$APP_DIR"
               git init
-              git remote add origin $REPO_URL
+              git remote add origin "$REPO_URL"
               git fetch origin
               git reset --hard origin/main
             else
               echo "Fresh clone..."
-              git clone $REPO_URL $APP_DIR
-              cd $APP_DIR
+              git clone "$REPO_URL" "$APP_DIR"
+              cd "$APP_DIR"
             fi
 
             echo "Installing server dependencies..."
-            cd $APP_DIR/server && npm ci --omit=dev
+            cd "$APP_DIR/server"
+            PUPPETEER_SKIP_DOWNLOAD=1 npm ci --omit=dev --no-audit --no-fund
+
+            echo "Building frontend..."
+            cd "$APP_DIR/client"
+            npm ci --no-audit --no-fund
+            VITE_API_URL=https://office.speednetkhulna.com/api npm run build
+
+            echo "Publishing frontend..."
+            mkdir -p "$OFFICE_DOMAIN_ROOT/assets"
+            cp "$APP_DIR/client/dist/index.html" "$OFFICE_DOMAIN_ROOT/index.html"
+            cp -a "$APP_DIR/client/dist/assets/." "$OFFICE_DOMAIN_ROOT/assets/"
+            [ -f "$APP_DIR/client/dist/logo-b.png" ] && cp "$APP_DIR/client/dist/logo-b.png" "$OFFICE_DOMAIN_ROOT/logo-b.png" || true
+            [ -f "$APP_DIR/client/dist/brand-logo.svg" ] && cp "$APP_DIR/client/dist/brand-logo.svg" "$OFFICE_DOMAIN_ROOT/brand-logo.svg" || true
+            [ -f "$APP_DIR/ops/office_spa.htaccess" ] && cp "$APP_DIR/ops/office_spa.htaccess" "$OFFICE_DOMAIN_ROOT/.htaccess" || true
+            [ -f "$APP_DIR/ops/proxy.php" ] && cp "$APP_DIR/ops/proxy.php" "$OFFICE_DOMAIN_ROOT/proxy.php" || true
 
             echo "Restarting PM2 processes..."
-            cd $APP_DIR
-            pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
+            cd "$APP_DIR"
+            pm2 reload ecosystem.config.js --only office-api-a,office-api-b --env production || pm2 start ecosystem.config.js --only office-api-a,office-api-b --env production
 
             echo "Deployment complete!"
       - name: Notify deployment
