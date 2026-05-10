@@ -1,6 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { addBillingLog, addDiscount, getResellerProfileDetails, updateReseller } from '../services/resellerService';
+import {
+  getChannelUsers, addChannelUser, updateChannelUser, deleteChannelUser,
+  getUserPayments, initMonthlyPayments, recordUserPayment, bulkRecordPayments,
+  getCommissionSummary, generateCommission, adjustCommission, finalizeCommission,
+  getCommissionHistory, recordCommissionPayment, getCommissionPayments, getChannelStatement
+} from '../services/channelPartnerService';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend } from 'chart.js';
 
@@ -85,6 +91,55 @@ const ResellerProfile = () => {
   const [discountNote, setDiscountNote] = useState('');
   const [editForm, setEditForm] = useState(null);
 
+  // Channel Partner state
+  const isChannel = data?.reseller?.partner_type === 'channel_partner';
+  const [cpUsers, setCpUsers] = useState([]);
+  const [cpMonth, setCpMonth] = useState(getDhakaDateYmd().slice(0, 7));
+  const [cpUserPayments, setCpUserPayments] = useState([]);
+  const [cpCommission, setCpCommission] = useState(null);
+  const [cpHistory, setCpHistory] = useState([]);
+  const [cpStatement, setCpStatement] = useState([]);
+  const [cpPayments, setCpPayments] = useState([]);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [showEditUser, setShowEditUser] = useState(null);
+  const [showCommissionPay, setShowCommissionPay] = useState(false);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [cpLoading, setCpLoading] = useState(false);
+  const [newUser, setNewUser] = useState({ user_name: '', user_id_code: '', phone: '', package_name: '', monthly_rate: '' });
+  const [commPayForm, setCommPayForm] = useState({ amount: '', payment_date: getDhakaDateYmd(), payment_method: 'Cash', reference_no: '', note: '' });
+  const [adjForm, setAdjForm] = useState({ type: 'adjustment', amount: '', note: '' });
+  const [cpUserSearch, setCpUserSearch] = useState('');
+
+  const loadChannelData = useCallback(async () => {
+    if (!profileId || !isChannel) return;
+    setCpLoading(true);
+    try {
+      const [users, commission, history, statement, payments] = await Promise.all([
+        getChannelUsers(profileId).catch(() => []),
+        getCommissionSummary(profileId, cpMonth).catch(() => null),
+        getCommissionHistory(profileId).catch(() => []),
+        getChannelStatement(profileId).catch(() => []),
+        getCommissionPayments(profileId).catch(() => [])
+      ]);
+      setCpUsers(users);
+      setCpCommission(commission);
+      setCpHistory(history);
+      setCpStatement(statement);
+      setCpPayments(payments);
+    } catch (e) { /* ignore */ }
+    setCpLoading(false);
+  }, [profileId, isChannel, cpMonth]);
+
+  const loadUserPayments = useCallback(async () => {
+    if (!profileId) return;
+    try {
+      const rows = await getUserPayments(profileId, cpMonth);
+      setCpUserPayments(rows);
+    } catch (e) { /* ignore */ }
+  }, [profileId, cpMonth]);
+
+  useEffect(() => { if (isChannel) { loadChannelData(); loadUserPayments(); } }, [isChannel, loadChannelData, loadUserPayments]);
+
   const load = async () => {
     if (!profileId) return;
     setLoadError('');
@@ -108,6 +163,7 @@ const ResellerProfile = () => {
         real_ip_count: Number(r.real_ip_count || 0),
         real_ip_price: Number(r.real_ip_price || 0),
         channel_user_count: Number(r.channel_user_count || 0),
+        profit_share_percentage: Number(r.profit_share_percentage || 0),
         joining_date: toDhakaDateInputValue(r.joining_date || r.created_at)
       });
     } catch (e) {
@@ -120,7 +176,7 @@ const ResellerProfile = () => {
 
   useEffect(() => {
     if (data && data.reseller?.partner_type === 'channel_partner' && activeTab === 'bandwidth') {
-      setActiveTab(data.permissions?.can_view_financials ? 'statement' : 'requests');
+      setActiveTab(data.permissions?.can_view_financials ? 'cp_users' : 'requests');
     }
   }, [data, activeTab]);
 
@@ -292,7 +348,14 @@ const ResellerProfile = () => {
       </div>
 
       <div className="row g-3 mb-3">
-        {can.can_view_financials && (
+        {isChannel && can.can_view_financials && cpCommission ? (
+          <>
+            <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">মোট ইউজার</small><h4 className="fw-bold m-0">{Number(cpCommission.total_users || 0).toLocaleString('bn-BD')}</h4><small className="text-success">{Number(cpCommission.active_users || 0).toLocaleString('bn-BD')} সক্রিয়</small></div></div>
+            <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">এই মাসের কালেকশন</small><h4 className="fw-bold m-0 text-primary">{money(cpCommission.total_collected)}</h4><small className="text-muted">{Number(cpCommission.paying_users || 0).toLocaleString('bn-BD')} ইউজার পেমেন্ট দিয়েছে</small></div></div>
+            <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">কমিশন ({Number(cpCommission.profit_share_percentage || 0)}%)</small><h4 className="fw-bold m-0 text-success">{money(cpCommission.gross_commission)}</h4><small className="text-muted">Net: {money(cpCommission.net_commission)}</small></div></div>
+            <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">বকেয়া ব্যালেন্স</small><h4 className={`fw-bold m-0 ${Number(cpCommission.closing_balance || 0) > 0 ? 'text-danger' : 'text-success'}`}>{money(cpCommission.closing_balance)}</h4><small className="text-muted">পরিশোধিত: {money(cpCommission.paid_to_partner)}</small></div></div>
+          </>
+        ) : can.can_view_financials && !isChannel ? (
           <>
             <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">বর্তমান মোট ডিউ</small><h4 title={stats.calc_tooltip || ''} className={`fw-bold m-0 ${Number(stats.net_due || 0) > 0 ? 'text-danger' : 'text-success'}`}>{money(stats.net_due)}</h4></div></div>
             <div className="col-md-3"><div className="card p-3" style={{ cursor: 'pointer' }} onClick={() => setShowBillHistory(true)}><small className="text-muted text-uppercase">Previous Due</small><h5 className="fw-bold m-0">{money(reseller.previous_month_due)}</h5></div></div>
@@ -300,7 +363,7 @@ const ResellerProfile = () => {
             <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">Paid This Month</small><h5 className="fw-bold m-0 text-success">{money(stats.total_paid_current_month)}</h5></div></div>
             <div className="col-md-3"><div className="card p-3"><small className="text-muted text-uppercase">সমন্বয় (এই মাস)</small><h5 className="fw-bold m-0 text-info">{money(stats.total_discount_current_month)}</h5></div></div>
           </>
-        )}
+        ) : null}
       </div>
 
       <div className="row g-3">
@@ -314,7 +377,10 @@ const ResellerProfile = () => {
               <li className="list-group-item px-0"><strong>কোম্পানি:</strong> {reseller.company_name || '-'}</li>
               <li className="list-group-item px-0"><strong>সংযোগ:</strong> {reseller.nttn_type || '-'} {reseller.connection_type ? `, ${reseller.connection_type}` : ''}</li>
               {reseller.partner_type === 'channel_partner' ? (
-                <li className="list-group-item px-0"><strong>Total Users:</strong> {Number(reseller.channel_user_count || 0).toLocaleString('bn-BD')}</li>
+                <>
+                  <li className="list-group-item px-0"><strong>Total Users:</strong> {Number(reseller.channel_user_count || 0).toLocaleString('bn-BD')}</li>
+                  {can.can_view_financials && <li className="list-group-item px-0"><strong>Profit Share:</strong> <span className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">{Number(reseller.profit_share_percentage || 0)}%</span></li>}
+                </>
               ) : (
                 <li className="list-group-item px-0">
                   <strong>NTTN Link:</strong>{' '}
@@ -351,11 +417,15 @@ const ResellerProfile = () => {
         <div className="col-lg-8">
           <div className="card">
             <div className="card-header border-0 bg-transparent p-3 d-flex justify-content-between align-items-center">
-              <ul className="nav nav-pills card-header-pills">
+              <ul className="nav nav-pills card-header-pills flex-wrap">
                 {reseller.partner_type !== 'channel_partner' && (
                   <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'bandwidth' ? 'active' : ''}`} onClick={() => setActiveTab('bandwidth')}>Bandwidth</button></li>
                 )}
-                {can.can_view_financials && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'statement' ? 'active' : ''}`} onClick={() => setActiveTab('statement')}>Statement</button></li>}
+                {isChannel && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_users' ? 'active' : ''}`} onClick={() => setActiveTab('cp_users')}>ইউজার</button></li>}
+                {isChannel && can.can_view_financials && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_collection' ? 'active' : ''}`} onClick={() => setActiveTab('cp_collection')}>কালেকশন</button></li>}
+                {isChannel && can.can_view_financials && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_commission' ? 'active' : ''}`} onClick={() => setActiveTab('cp_commission')}>কমিশন</button></li>}
+                {isChannel && can.can_view_financials && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_statement' ? 'active' : ''}`} onClick={() => setActiveTab('cp_statement')}>স্টেটমেন্ট</button></li>}
+                {!isChannel && can.can_view_financials && <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'statement' ? 'active' : ''}`} onClick={() => setActiveTab('statement')}>Statement</button></li>}
                 <li className="nav-item"><button className={`nav-link btn-sm py-1 px-3 ${activeTab === 'requests' ? 'active' : ''}`} onClick={() => setActiveTab('requests')}>Requests</button></li>
               </ul>
               {can.can_view_financials && <Link to={`/billing-logs?reseller_id=${reseller.id}`} className="btn btn-xs btn-outline-primary rounded-pill px-2" style={{ fontSize: 11 }}>View All</Link>}
@@ -441,6 +511,204 @@ const ResellerProfile = () => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Channel Partner — Users Tab */}
+              {activeTab === 'cp_users' && isChannel && (
+                <div className="p-3">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <div className="d-flex gap-2 align-items-center">
+                      <input type="text" className="form-control form-control-sm" placeholder="ইউজার খুঁজুন..." value={cpUserSearch} onChange={(e) => setCpUserSearch(e.target.value)} style={{ width: 200 }} />
+                      <span className="badge bg-primary">{cpUsers.length} জন</span>
+                    </div>
+                    <button className="btn btn-sm btn-primary" onClick={() => { setNewUser({ user_name: '', user_id_code: '', phone: '', package_name: '', monthly_rate: '' }); setShowAddUser(true); }}>
+                      <i className="fas fa-plus me-1" />ইউজার যোগ
+                    </button>
+                  </div>
+                  <div className="table-responsive" style={{ maxHeight: 400 }}>
+                    <table className="table table-hover align-middle mb-0 table-sm">
+                      <thead className="table-light"><tr><th>নাম</th><th>আইডি</th><th>ফোন</th><th>প্যাকেজ</th><th>রেট</th><th>স্ট্যাটাস</th><th></th></tr></thead>
+                      <tbody>
+                        {cpUsers.filter(u => !cpUserSearch || u.user_name?.toLowerCase().includes(cpUserSearch.toLowerCase()) || u.user_id_code?.toLowerCase().includes(cpUserSearch.toLowerCase()) || u.phone?.includes(cpUserSearch)).length === 0 ? (
+                          <tr><td colSpan="7" className="text-center text-muted py-4">কোনো ইউজার নেই</td></tr>
+                        ) : cpUsers.filter(u => !cpUserSearch || u.user_name?.toLowerCase().includes(cpUserSearch.toLowerCase()) || u.user_id_code?.toLowerCase().includes(cpUserSearch.toLowerCase()) || u.phone?.includes(cpUserSearch)).map((u) => (
+                          <tr key={u.id}>
+                            <td className="fw-bold">{u.user_name}</td>
+                            <td><span className="badge bg-light text-dark border">{u.user_id_code || '-'}</span></td>
+                            <td>{u.phone || '-'}</td>
+                            <td>{u.package_name || '-'}</td>
+                            <td>{money(u.monthly_rate)}</td>
+                            <td><span className={`badge ${u.status === 'active' ? 'bg-success' : 'bg-danger'} bg-opacity-10 text-dark border`}>{u.status}</span></td>
+                            <td>
+                              <div className="btn-group btn-group-sm">
+                                <button className="btn btn-outline-primary btn-sm" onClick={() => setShowEditUser(u)} title="সম্পাদনা"><i className="fas fa-edit" /></button>
+                                <button className="btn btn-outline-danger btn-sm" onClick={async () => { if (window.confirm('এই ইউজার মুছে ফেলতে চান?')) { await deleteChannelUser(profileId, u.id); loadChannelData(); } }} title="মুছুন"><i className="fas fa-trash" /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Channel Partner — Collection Tab */}
+              {activeTab === 'cp_collection' && isChannel && (
+                <div className="p-3">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <div className="d-flex gap-2 align-items-center">
+                      <input type="month" className="form-control form-control-sm" value={cpMonth} onChange={(e) => setCpMonth(e.target.value)} style={{ width: 170 }} />
+                      <span className="badge bg-info">{cpUserPayments.length} জন</span>
+                    </div>
+                    <div className="d-flex gap-2">
+                      <button className="btn btn-sm btn-outline-primary" onClick={async () => { await initMonthlyPayments(profileId, cpMonth); loadUserPayments(); }}>
+                        <i className="fas fa-sync me-1" />ইনিশিয়ালাইজ
+                      </button>
+                    </div>
+                  </div>
+                  {cpUserPayments.length > 0 && (
+                    <div className="alert alert-info py-2 small mb-3">
+                      <strong>সারাংশ:</strong> মোট ডিউ: {money(cpUserPayments.reduce((s, p) => s + Number(p.amount_due || 0), 0))} |
+                      কালেকশন: {money(cpUserPayments.reduce((s, p) => s + Number(p.amount_paid || 0), 0))} |
+                      পেমেন্ট দিয়েছে: {cpUserPayments.filter(p => Number(p.amount_paid) > 0).length} জন |
+                      বাকি: {cpUserPayments.filter(p => Number(p.amount_paid) === 0).length} জন
+                    </div>
+                  )}
+                  <div className="table-responsive" style={{ maxHeight: 380 }}>
+                    <table className="table table-hover align-middle mb-0 table-sm">
+                      <thead className="table-light"><tr><th>ইউজার</th><th>আইডি</th><th>প্যাকেজ</th><th>ডিউ</th><th>পেমেন্ট</th><th>স্ট্যাটাস</th><th></th></tr></thead>
+                      <tbody>
+                        {cpUserPayments.length === 0 ? (
+                          <tr><td colSpan="7" className="text-center text-muted py-4">এই মাসের জন্য কোনো রেকর্ড নেই। &quot;ইনিশিয়ালাইজ&quot; বাটনে ক্লিক করুন।</td></tr>
+                        ) : cpUserPayments.map((p) => (
+                          <tr key={p.id}>
+                            <td className="fw-bold">{p.user_name}</td>
+                            <td><span className="badge bg-light text-dark border">{p.user_id_code || '-'}</span></td>
+                            <td>{p.package_name || '-'}</td>
+                            <td>{money(p.amount_due)}</td>
+                            <td>
+                              <input type="number" step="0.01" min="0" className="form-control form-control-sm" style={{ width: 100 }}
+                                defaultValue={Number(p.amount_paid || 0)}
+                                onBlur={async (e) => {
+                                  const val = Number(e.target.value || 0);
+                                  if (val !== Number(p.amount_paid || 0)) {
+                                    await recordUserPayment(profileId, { user_id: p.user_id, month: cpMonth, amount_paid: val, payment_date: getDhakaDateYmd() });
+                                    loadUserPayments();
+                                    loadChannelData();
+                                  }
+                                }}
+                              />
+                            </td>
+                            <td><span className={`badge ${Number(p.amount_paid) > 0 ? 'bg-success' : 'bg-warning'} bg-opacity-10 text-dark border`}>{Number(p.amount_paid) > 0 ? 'Paid' : 'Unpaid'}</span></td>
+                            <td>
+                              {Number(p.amount_paid) === 0 && (
+                                <button className="btn btn-xs btn-outline-success" onClick={async () => {
+                                  await recordUserPayment(profileId, { user_id: p.user_id, month: cpMonth, amount_paid: Number(p.amount_due), payment_date: getDhakaDateYmd() });
+                                  loadUserPayments(); loadChannelData();
+                                }}>Full Pay</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {cpUserPayments.length > 0 && (
+                    <div className="mt-3 text-end">
+                      <button className="btn btn-sm btn-success" onClick={async () => {
+                        const unpaid = cpUserPayments.filter(p => Number(p.amount_paid) === 0);
+                        if (unpaid.length === 0) return;
+                        if (!window.confirm(`${unpaid.length} জন unpaid ইউজারকে full paid হিসেবে মার্ক করতে চান?`)) return;
+                        await bulkRecordPayments(profileId, cpMonth, unpaid.map(p => ({ user_id: p.user_id, amount_paid: Number(p.amount_due || p.monthly_rate || 0), payment_date: getDhakaDateYmd() })));
+                        loadUserPayments(); loadChannelData();
+                      }}>
+                        <i className="fas fa-check-double me-1" />সবাই Full Paid
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Channel Partner — Commission Tab */}
+              {activeTab === 'cp_commission' && isChannel && (
+                <div className="p-3">
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <h6 className="fw-bold m-0">কমিশন ইতিহাস</h6>
+                    <div className="d-flex gap-2">
+                      <button className="btn btn-sm btn-primary" onClick={async () => { await generateCommission(profileId, cpMonth); loadChannelData(); }}>
+                        <i className="fas fa-calculator me-1" />কমিশন Generate
+                      </button>
+                      <button className="btn btn-sm btn-success" onClick={() => { setCommPayForm({ amount: '', payment_date: getDhakaDateYmd(), payment_method: 'Cash', reference_no: '', note: '' }); setShowCommissionPay(true); }}>
+                        <i className="fas fa-money-bill me-1" />কমিশন দিন
+                      </button>
+                    </div>
+                  </div>
+                  <div className="table-responsive">
+                    <table className="table table-hover align-middle mb-0 table-sm">
+                      <thead className="table-light"><tr><th>মাস</th><th>ইউজার</th><th>কালেকশন</th><th>%</th><th>Gross</th><th>Adj</th><th>Ded</th><th>Net</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+                      <tbody>
+                        {cpHistory.length === 0 ? (
+                          <tr><td colSpan="12" className="text-center text-muted py-4">কোনো কমিশন ইতিহাস নেই</td></tr>
+                        ) : cpHistory.map((h) => (
+                          <tr key={h.id}>
+                            <td className="fw-bold">{h.month}</td>
+                            <td>{h.paying_users}/{h.total_users}</td>
+                            <td>{money(h.total_collection)}</td>
+                            <td>{Number(h.profit_share_pct)}%</td>
+                            <td>{money(h.gross_commission)}</td>
+                            <td className={Number(h.adjustments) !== 0 ? 'text-info' : ''}>{Number(h.adjustments) !== 0 ? money(h.adjustments) : '-'}</td>
+                            <td className={Number(h.deductions) !== 0 ? 'text-danger' : ''}>{Number(h.deductions) !== 0 ? money(h.deductions) : '-'}</td>
+                            <td className="fw-bold">{money(h.net_commission)}</td>
+                            <td className="text-success">{money(h.paid_amount)}</td>
+                            <td className={Number(h.closing_balance) > 0 ? 'text-danger fw-bold' : 'text-success'}>{money(h.closing_balance)}</td>
+                            <td><span className={`badge ${h.status === 'finalized' ? 'bg-success' : 'bg-warning'} bg-opacity-10 text-dark border`}>{h.status}</span></td>
+                            <td>
+                              <div className="btn-group btn-group-sm">
+                                {h.status === 'draft' && (
+                                  <>
+                                    <button className="btn btn-outline-info btn-sm" onClick={() => { setAdjForm({ type: 'adjustment', amount: '', note: '' }); setShowAdjust(h); }} title="সমন্বয়"><i className="fas fa-sliders-h" /></button>
+                                    <button className="btn btn-outline-success btn-sm" onClick={async () => { if (window.confirm('কমিশন Finalize করতে চান?')) { await finalizeCommission(profileId, h.id); loadChannelData(); } }} title="Finalize"><i className="fas fa-check" /></button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Channel Partner — Statement Tab */}
+              {activeTab === 'cp_statement' && isChannel && (
+                <div className="p-3">
+                  <h6 className="fw-bold mb-3">স্টেটমেন্ট</h6>
+                  <div className="table-responsive" style={{ maxHeight: 420 }}>
+                    <table className="table table-hover align-middle mb-0 table-sm">
+                      <thead className="table-light"><tr><th>তারিখ</th><th>বিবরণ</th><th>টাইপ</th><th>পরিমাণ</th></tr></thead>
+                      <tbody>
+                        {cpStatement.length === 0 ? (
+                          <tr><td colSpan="4" className="text-center text-muted py-4">কোনো স্টেটমেন্ট এন্ট্রি নেই</td></tr>
+                        ) : cpStatement.map((s, i) => (
+                          <tr key={`${s.type}-${s.id}-${i}`}>
+                            <td>{s.date ? new Date(s.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '-'}</td>
+                            <td>{s.description}</td>
+                            <td>
+                              <span className={`badge ${s.type === 'commission' ? 'bg-success' : s.type === 'payment' ? 'bg-primary' : s.type === 'deduction' ? 'bg-danger' : 'bg-info'} bg-opacity-10 text-dark border`}>
+                                {s.type === 'commission' ? 'Credit' : s.type === 'payment' ? 'Payment' : s.type === 'deduction' ? 'কর্তন' : 'সমন্বয়'}
+                              </span>
+                            </td>
+                            <td className={`fw-bold ${s.type === 'commission' || s.type === 'adjustment' ? 'text-success' : 'text-danger'}`}>
+                              {s.type === 'payment' || s.type === 'deduction' ? '-' : '+'}{money(s.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
 
@@ -556,8 +824,9 @@ const ResellerProfile = () => {
 
             {editForm.partner_type === 'channel_partner' ? (
               <>
-                <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ইউজার তথ্য</h6>
-                <div className="col-md-6"><label className="form-label fw-semibold">Total Users</label><input type="number" min="0" className="form-control" value={editForm.channel_user_count} onChange={(e) => setEditForm({ ...editForm, channel_user_count: e.target.value })} /></div>
+                <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ইউজার ও কমিশন তথ্য</h6>
+                <div className="col-md-4"><label className="form-label fw-semibold">Total Users</label><input type="number" min="0" className="form-control" value={editForm.channel_user_count} onChange={(e) => setEditForm({ ...editForm, channel_user_count: e.target.value })} /></div>
+                <div className="col-md-4"><label className="form-label fw-semibold">Profit Share (%)</label><input type="number" step="0.01" min="0" max="100" className="form-control" value={editForm.profit_share_percentage} onChange={(e) => setEditForm({ ...editForm, profit_share_percentage: e.target.value })} /></div>
               </>
             ) : (
               <>
@@ -612,6 +881,102 @@ const ResellerProfile = () => {
               <button type="button" className="btn btn-light me-2" onClick={() => setShowEdit(false)}>বন্ধ করুন</button>
               <button className="btn btn-primary" disabled={saving}>{saving ? 'সেভ হচ্ছে...' : 'আপডেট করুন'}</button>
             </div>
+          </form>
+        </ModalWrap>
+      )}
+
+      {/* Channel Partner — Add User Modal */}
+      {showAddUser && (
+        <ModalWrap title="নতুন ইউজার যোগ করুন" onClose={() => setShowAddUser(false)}>
+          <form className="row g-3" onSubmit={async (e) => {
+            e.preventDefault();
+            await addChannelUser(profileId, newUser);
+            setShowAddUser(false);
+            loadChannelData();
+          }}>
+            <div className="col-md-6"><label className="form-label fw-bold">ইউজারের নাম</label><input className="form-control" value={newUser.user_name} onChange={(e) => setNewUser({ ...newUser, user_name: e.target.value })} required /></div>
+            <div className="col-md-6"><label className="form-label fw-bold">ইউজার আইডি</label><input className="form-control" value={newUser.user_id_code} onChange={(e) => setNewUser({ ...newUser, user_id_code: e.target.value })} /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">ফোন</label><input className="form-control" value={newUser.phone} onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })} /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">প্যাকেজ</label><input className="form-control" value={newUser.package_name} onChange={(e) => setNewUser({ ...newUser, package_name: e.target.value })} /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">মাসিক রেট (Tk)</label><input type="number" step="0.01" min="0" className="form-control" value={newUser.monthly_rate} onChange={(e) => setNewUser({ ...newUser, monthly_rate: e.target.value })} /></div>
+            <div className="col-12 text-end"><button type="button" className="btn btn-light rounded-pill me-2" onClick={() => setShowAddUser(false)}>বাতিল</button><button className="btn btn-primary fw-bold rounded-pill px-4">যোগ করুন</button></div>
+          </form>
+        </ModalWrap>
+      )}
+
+      {/* Channel Partner — Edit User Modal */}
+      {showEditUser && (
+        <ModalWrap title="ইউজার সম্পাদনা" onClose={() => setShowEditUser(null)}>
+          <form className="row g-3" onSubmit={async (e) => {
+            e.preventDefault();
+            await updateChannelUser(profileId, showEditUser.id, showEditUser);
+            setShowEditUser(null);
+            loadChannelData();
+          }}>
+            <div className="col-md-6"><label className="form-label fw-bold">ইউজারের নাম</label><input className="form-control" value={showEditUser.user_name || ''} onChange={(e) => setShowEditUser({ ...showEditUser, user_name: e.target.value })} required /></div>
+            <div className="col-md-6"><label className="form-label fw-bold">ইউজার আইডি</label><input className="form-control" value={showEditUser.user_id_code || ''} onChange={(e) => setShowEditUser({ ...showEditUser, user_id_code: e.target.value })} /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">ফোন</label><input className="form-control" value={showEditUser.phone || ''} onChange={(e) => setShowEditUser({ ...showEditUser, phone: e.target.value })} /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">প্যাকেজ</label><input className="form-control" value={showEditUser.package_name || ''} onChange={(e) => setShowEditUser({ ...showEditUser, package_name: e.target.value })} /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">মাসিক রেট (Tk)</label><input type="number" step="0.01" min="0" className="form-control" value={showEditUser.monthly_rate || ''} onChange={(e) => setShowEditUser({ ...showEditUser, monthly_rate: e.target.value })} /></div>
+            <div className="col-md-6">
+              <label className="form-label fw-bold">স্ট্যাটাস</label>
+              <select className="form-select" value={showEditUser.status || 'active'} onChange={(e) => setShowEditUser({ ...showEditUser, status: e.target.value })}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div className="col-12 text-end"><button type="button" className="btn btn-light rounded-pill me-2" onClick={() => setShowEditUser(null)}>বাতিল</button><button className="btn btn-primary fw-bold rounded-pill px-4">আপডেট করুন</button></div>
+          </form>
+        </ModalWrap>
+      )}
+
+      {/* Channel Partner — Commission Payment Modal */}
+      {showCommissionPay && (
+        <ModalWrap title="কমিশন পেমেন্ট দিন" onClose={() => setShowCommissionPay(false)}>
+          <form className="row g-3" onSubmit={async (e) => {
+            e.preventDefault();
+            const latestLog = cpHistory.find(h => h.status === 'finalized');
+            await recordCommissionPayment(profileId, {
+              commission_log_id: latestLog?.id || null,
+              amount: Number(commPayForm.amount),
+              payment_method: commPayForm.payment_method,
+              payment_date: commPayForm.payment_date,
+              reference_no: commPayForm.reference_no,
+              note: commPayForm.note
+            });
+            setShowCommissionPay(false);
+            loadChannelData();
+          }}>
+            {cpCommission && <div className="col-12"><div className="alert alert-info py-2 small mb-0">বকেয়া কমিশন: <strong>{money(cpCommission.closing_balance)}</strong></div></div>}
+            <div className="col-md-4"><label className="form-label fw-bold">পরিমাণ (Tk)</label><input type="number" step="0.01" min="0.01" className="form-control form-control-lg fw-bold text-success" value={commPayForm.amount} onChange={(e) => setCommPayForm({ ...commPayForm, amount: e.target.value })} required /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">তারিখ</label><input type="date" className="form-control" value={commPayForm.payment_date} onChange={(e) => setCommPayForm({ ...commPayForm, payment_date: e.target.value })} required /></div>
+            <div className="col-md-4"><label className="form-label fw-bold">পেমেন্ট মেথড</label><select className="form-select" value={commPayForm.payment_method} onChange={(e) => setCommPayForm({ ...commPayForm, payment_method: e.target.value })}><option>Cash</option><option>Bank</option><option>bKash</option><option>Nagad</option><option>Rocket</option><option>Other</option></select></div>
+            <div className="col-md-6"><label className="form-label fw-bold">রেফারেন্স নং</label><input className="form-control" value={commPayForm.reference_no} onChange={(e) => setCommPayForm({ ...commPayForm, reference_no: e.target.value })} /></div>
+            <div className="col-md-6"><label className="form-label fw-bold">নোট</label><input className="form-control" value={commPayForm.note} onChange={(e) => setCommPayForm({ ...commPayForm, note: e.target.value })} /></div>
+            <div className="col-12 text-end"><button type="button" className="btn btn-light rounded-pill me-2" onClick={() => setShowCommissionPay(false)}>বাতিল</button><button className="btn btn-success fw-bold rounded-pill px-4">পেমেন্ট নিশ্চিত করুন</button></div>
+          </form>
+        </ModalWrap>
+      )}
+
+      {/* Channel Partner — Adjustment Modal */}
+      {showAdjust && (
+        <ModalWrap title="কমিশন সমন্বয়/কর্তন" onClose={() => setShowAdjust(false)}>
+          <form className="row g-3" onSubmit={async (e) => {
+            e.preventDefault();
+            await adjustCommission(profileId, showAdjust.id, adjForm);
+            setShowAdjust(false);
+            loadChannelData();
+          }}>
+            <div className="col-md-6">
+              <label className="form-label fw-bold">টাইপ</label>
+              <select className="form-select" value={adjForm.type} onChange={(e) => setAdjForm({ ...adjForm, type: e.target.value })}>
+                <option value="adjustment">সমন্বয় (Adjustment)</option>
+                <option value="deduction">কর্তন (Deduction)</option>
+              </select>
+            </div>
+            <div className="col-md-6"><label className="form-label fw-bold">পরিমাণ (Tk)</label><input type="number" step="0.01" min="0.01" className="form-control" value={adjForm.amount} onChange={(e) => setAdjForm({ ...adjForm, amount: e.target.value })} required /></div>
+            <div className="col-12"><label className="form-label fw-bold">কারণ/নোট</label><textarea className="form-control" rows="2" value={adjForm.note} onChange={(e) => setAdjForm({ ...adjForm, note: e.target.value })} /></div>
+            <div className="col-12 text-end"><button type="button" className="btn btn-light rounded-pill me-2" onClick={() => setShowAdjust(false)}>বাতিল</button><button className="btn btn-info text-white fw-bold rounded-pill px-4">সেভ করুন</button></div>
           </form>
         </ModalWrap>
       )}

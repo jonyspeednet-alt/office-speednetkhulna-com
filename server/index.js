@@ -20,6 +20,7 @@ const {
 const db = require('./utilities/db');
 const { initAuditLogTable } = require('./utilities/auditLogger');
 const { initWhatsAppWorkerTables } = require('./utilities/whatsappWorkerQueue');
+const { initChannelPartnerTables } = require('./utilities/channelPartnerInit');
 const { ensureClient: ensureWhatsAppClient } = require('./services/whatsappNotificationService');
 const { applyMiddleware } = require('./middleware/index');
 const apiRoutes = require('./routes/index');
@@ -55,6 +56,7 @@ const app = express();
 // Init DB tables (best-effort)
 initAuditLogTable();
 initWhatsAppWorkerTables();
+initChannelPartnerTables();
 
 // Apply all middleware
 applyMiddleware(app);

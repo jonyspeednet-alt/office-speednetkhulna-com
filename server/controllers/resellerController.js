@@ -1753,6 +1753,7 @@ const getResellerProfileDetails = async (req, res) => {
         COALESCE(r.real_ip_count,0)::int AS real_ip_count,
         COALESCE(r.real_ip_price,0)::numeric AS real_ip_price,
         COALESCE(r.channel_user_count,0)::int AS channel_user_count,
+        COALESCE(r.profit_share_percentage,0)::numeric AS profit_share_percentage,
         r.next_pay_date,
         r.created_at,
         ${joiningDateExpr("r")} AS joining_date
@@ -2401,6 +2402,30 @@ const updateReseller = async (req, res) => {
         id,
       ]);
     }
+
+    if (req.body.profit_share_percentage !== undefined) {
+      const psp = parseAmount(req.body.profit_share_percentage, 0);
+      await pool
+        .query(
+          `UPDATE resellers SET profit_share_percentage = $1 WHERE id = $2`,
+          [Math.max(0, Math.min(100, psp)), id],
+        )
+        .catch(() => {});
+    }
+
+    if (req.body.channel_user_count !== undefined) {
+      const cuc = Math.max(
+        0,
+        parseInt(req.body.channel_user_count || 0, 10) || 0,
+      );
+      await pool
+        .query(
+          `UPDATE resellers SET channel_user_count = $1 WHERE id = $2`,
+          [cuc, id],
+        )
+        .catch(() => {});
+    }
+
     const watchedFields = [
       "current_projected_bill",
       "previous_month_due",
