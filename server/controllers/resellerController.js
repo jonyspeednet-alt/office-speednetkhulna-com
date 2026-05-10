@@ -560,6 +560,39 @@ const calculateMonthlyBillBreakdown = async (
     // Optional table in some environments; ignore if missing.
   }
 
+  // Fetch rate change logs to resolve "previous rate" for pro-rata when no baseline history exists.
+  // reseller_rate_change_logs stores prev_rate_iig/cdn/etc — the rate BEFORE each change.
+  const rateChangeLogMap = {}; // bwType -> { dateStr -> prevRate }
+  try {
+    const changeLogResult = await pool.query(
+      `SELECT effective_date::date AS effective_date,
+              prev_rate_iig, prev_rate_bdix, prev_rate_ggc, prev_rate_fna,
+              prev_rate_cdn, prev_rate_bcdn, prev_rate_nttn
+       FROM reseller_rate_change_logs
+       WHERE reseller_id = $1
+       ORDER BY effective_date ASC`,
+      [resellerId],
+    );
+    for (const row of changeLogResult.rows) {
+      const dateStr = String(row.effective_date).slice(0, 10);
+      const prevColMap = {
+        IIG: 'prev_rate_iig', BDIX: 'prev_rate_bdix', GGC: 'prev_rate_ggc',
+        FNA: 'prev_rate_fna', CDN: 'prev_rate_cdn', BCDN: 'prev_rate_bcdn', NTTN: 'prev_rate_nttn',
+      };
+      for (const [bwType, col] of Object.entries(prevColMap)) {
+        if (row[col] != null) {
+          if (!rateChangeLogMap[bwType]) rateChangeLogMap[bwType] = {};
+          // Only keep the earliest entry per bwType per date
+          if (!rateChangeLogMap[bwType][dateStr]) {
+            rateChangeLogMap[bwType][dateStr] = Number(row[col]);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // reseller_rate_change_logs may not exist in all environments; ignore
+  }
+
   const futureChangesRows = await pool.query(
     `SELECT UPPER(COALESCE(bw_type,'')) AS bw_type, LOWER(COALESCE(change_type,'')) AS change_type,
             COALESCE(amount,0)::numeric AS amount, implementation_date::date AS implementation_date
@@ -634,47 +667,54 @@ const calculateMonthlyBillBreakdown = async (
     const initialBw = parseAmount(workingBw[bwType], 0);
     if (initialBw === 0 && typeChanges.length === 0) continue;
 
-    // Build rate segments from reseller_rate_history for this BW type
-    // Each entry means: from effective_date onwards, use this rate
+    // Rate history entries within this month only (sorted ascending)
     const rateHistory = (rateHistoryByType[bwType] || [])
-      .filter(rh => {
-        // Only entries within this month (effective_date >= monthStart)
-        return rh.effective_date >= info.monthStartStr;
-      })
+      .filter(rh => rh.effective_date >= info.monthStartStr)
       .sort((a, b) => a.effective_date.localeCompare(b.effective_date));
 
-    // If there are rate changes within this month, split into rate segments
-    // Each rate segment: { fromDay, toDay, rate }
+    // Determine the rate in effect at the START of this month (before any mid-month changes).
+    // Priority: (1) last history entry strictly before this month, (2) prev_rate from earliest
+    // rate change log entry IN this month, (3) current reseller rate as last resort.
+    const allBwHistory = rateHistoryByType[bwType] || [];
+    const preMonthRate = (() => {
+      const preEntries = allBwHistory
+        .filter(rh => rh.effective_date < info.monthStartStr)
+        .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+      if (preEntries.length > 0) return Number(preEntries[0].rate);
+      // Fallback: use prev_rate from earliest rate change LOG entry in this month
+      const thisMonthLogEntries = Object.entries(rateChangeLogMap[bwType] || {})
+        .filter(([d]) => d >= info.monthStartStr && d <= info.monthEndStr)
+        .sort(([a], [b]) => a.localeCompare(b));
+      if (thisMonthLogEntries.length > 0) return thisMonthLogEntries[0][1];
+      return rate;
+    })();
+
+    // Split the billing period into rate segments when rate changes mid-month.
+    // Uses preMonthRate as the starting rate so the "before change" segment is correct.
     const buildRateSegments = (fromDay, toDay) => {
       if (rateHistory.length === 0) {
-        return [{ fromDay, toDay, segRate: rate }];
+        return [{ fromDay, toDay, segRate: preMonthRate }];
       }
       const segs = [];
       let cursor = fromDay;
+      let currentRate = preMonthRate;
       for (const rh of rateHistory) {
         const rhDate = parseYMD(rh.effective_date);
         if (!rhDate) continue;
         const rhDay = rhDate.getDate();
         if (rhDay > toDay) break;
         if (rhDay > cursor) {
-          // Segment before this rate change: use previous rate
-          const prevRate = segs.length > 0 ? segs[segs.length - 1].segRate : rate;
-          segs.push({ fromDay: cursor, toDay: rhDay - 1, segRate: prevRate });
+          // Days [cursor, rhDay-1] used the old rate
+          segs.push({ fromDay: cursor, toDay: rhDay - 1, segRate: currentRate });
           cursor = rhDay;
-        } else if (rhDay <= cursor) {
-          // Rate change on or before cursor — update rate for current position
-          // (will be applied to next segment)
         }
+        // From rhDay onwards, the new rate applies
+        currentRate = Number(rh.rate);
       }
-      // Remaining days use the last known rate
-      const lastRate = rateHistory.filter(rh => {
-        const rhDate = parseYMD(rh.effective_date);
-        return rhDate && rhDate.getDate() <= cursor;
-      }).reduce((_, rh) => rh.rate, rate);
       if (cursor <= toDay) {
-        segs.push({ fromDay: cursor, toDay, segRate: Number(lastRate) });
+        segs.push({ fromDay: cursor, toDay, segRate: currentRate });
       }
-      return segs.length > 0 ? segs : [{ fromDay, toDay, segRate: rate }];
+      return segs.length > 0 ? segs : [{ fromDay, toDay, segRate: preMonthRate }];
     };
 
     let cursorDay = info.daysInMonth;
