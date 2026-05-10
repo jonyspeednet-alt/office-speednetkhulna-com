@@ -13,12 +13,13 @@ const fmt = (n, decimals = 2) => {
   return num.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 };
 
-const StatusBadge = ({ type }) => { // Updated to show Bengali package increase/decrease when provided by backend
+const StatusBadge = ({ type }) => {
+  // সার্ভার থেকে যদি "প্যাকেজ বৃদ্ধি" বা "প্যাকেজ হ্রাস" আসে তা সরাসরি দেখাব
   if (type === 'increase') return <span className="inv-badge badge-increase">{t('invoice.increase')}</span>;
   if (type === 'decrease') return <span className="inv-badge badge-decrease">{t('invoice.decrease')}</span>;
   if (type === 'standard') return <span className="inv-badge badge-standard">{t('invoice.currentPkg')}</span>;
   if (type === 'rate_change') return <span className="inv-badge badge-rate-change">রেট পরিবর্তন</span>;
-  // For backend-provided Bengali labels like "প্যাকেজ বৃদ্ধি" or "প্যাকেজ হ্রাস"
+  // অন্য যেকোনো মান (যেমন "প্যাকেজ বৃদ্ধি" / "প্যাকেজ হ্রাস") সরাসরি রেন্ডার
   return <span className="inv-badge badge-standard">{type}</span>;
 };
   if (type === 'increase') return <span className="inv-badge badge-increase">{t('invoice.increase')}</span>;
