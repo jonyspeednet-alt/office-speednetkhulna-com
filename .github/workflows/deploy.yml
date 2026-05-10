@@ -54,7 +54,15 @@ jobs:
         working-directory: client
         run: npm run build
         env:
-          VITE_API_URL: http://localhost:5000
+          VITE_API_URL: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && 'https://office.speednetkhulna.com/api' || 'http://localhost:5000' }}
+
+      - name: Upload client build artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+          if-no-files-found: error
 
       - name: Check for secrets accidentally committed
         run: |
@@ -75,6 +83,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download client build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+
+      - name: Upload frontend build to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: 21098
+          source: "client/dist,ops/office_spa.htaccess,ops/proxy.php"
+          target: "/home/speeuvmq/office_deploy_uploads/${{ github.run_id }}"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -86,6 +110,7 @@ jobs:
             set -euo pipefail
             APP_DIR="/home/speeuvmq/office_app"
             OFFICE_DOMAIN_ROOT="/home/speeuvmq/office.speednetkhulna.com"
+            UPLOAD_DIR="/home/speeuvmq/office_deploy_uploads/${{ github.run_id }}"
             REPO_URL="https://github.com/jonyspeednet-alt/office-speednetkhulna-com.git"
 
             if [ -d "$APP_DIR/.git" ]; then
@@ -108,19 +133,18 @@ jobs:
             cd "$APP_DIR/server"
             PUPPETEER_SKIP_DOWNLOAD=1 npm ci --omit=dev --no-audit --no-fund
 
-            echo "Building frontend..."
-            cd "$APP_DIR/client"
-            npm ci --no-audit --no-fund
-            VITE_API_URL=https://office.speednetkhulna.com/api npm run build
-
             echo "Publishing frontend..."
+            test -f "$UPLOAD_DIR/client/dist/index.html"
             mkdir -p "$OFFICE_DOMAIN_ROOT/assets"
-            cp "$APP_DIR/client/dist/index.html" "$OFFICE_DOMAIN_ROOT/index.html"
-            cp -a "$APP_DIR/client/dist/assets/." "$OFFICE_DOMAIN_ROOT/assets/"
-            [ -f "$APP_DIR/client/dist/logo-b.png" ] && cp "$APP_DIR/client/dist/logo-b.png" "$OFFICE_DOMAIN_ROOT/logo-b.png" || true
-            [ -f "$APP_DIR/client/dist/brand-logo.svg" ] && cp "$APP_DIR/client/dist/brand-logo.svg" "$OFFICE_DOMAIN_ROOT/brand-logo.svg" || true
-            [ -f "$APP_DIR/ops/office_spa.htaccess" ] && cp "$APP_DIR/ops/office_spa.htaccess" "$OFFICE_DOMAIN_ROOT/.htaccess" || true
-            [ -f "$APP_DIR/ops/proxy.php" ] && cp "$APP_DIR/ops/proxy.php" "$OFFICE_DOMAIN_ROOT/proxy.php" || true
+            mkdir -p "$APP_DIR/client/dist/assets"
+            cp "$UPLOAD_DIR/client/dist/index.html" "$APP_DIR/client/dist/index.html"
+            cp -a "$UPLOAD_DIR/client/dist/assets/." "$APP_DIR/client/dist/assets/"
+            cp "$UPLOAD_DIR/client/dist/index.html" "$OFFICE_DOMAIN_ROOT/index.html"
+            cp -a "$UPLOAD_DIR/client/dist/assets/." "$OFFICE_DOMAIN_ROOT/assets/"
+            [ -f "$UPLOAD_DIR/client/dist/logo-b.png" ] && cp "$UPLOAD_DIR/client/dist/logo-b.png" "$OFFICE_DOMAIN_ROOT/logo-b.png" || true
+            [ -f "$UPLOAD_DIR/client/dist/brand-logo.svg" ] && cp "$UPLOAD_DIR/client/dist/brand-logo.svg" "$OFFICE_DOMAIN_ROOT/brand-logo.svg" || true
+            [ -f "$UPLOAD_DIR/ops/office_spa.htaccess" ] && cp "$UPLOAD_DIR/ops/office_spa.htaccess" "$OFFICE_DOMAIN_ROOT/.htaccess" || true
+            [ -f "$UPLOAD_DIR/ops/proxy.php" ] && cp "$UPLOAD_DIR/ops/proxy.php" "$OFFICE_DOMAIN_ROOT/proxy.php" || true
 
             echo "Restarting PM2 processes..."
             cd "$APP_DIR"
