@@ -1,22 +1,16 @@
-# office.speednetkhulna.com
+# SpeedNet Khulna - Office Management System
 
-Docs entry point: `docs/README.md`
+[![Deploy](https://github.com/jonyspeednet-alt/office-speednetkhulna-com/actions/workflows/deploy.yml/badge.svg)](https://github.com/jonyspeednet-alt/office-speednetkhulna-com/actions/workflows/deploy.yml)
 
-**Quick Start**
-1. Local dev: `ops/run_local.bat`
-2. Open: `http://localhost:5173`
+A full-stack office management system for SpeedNet Khulna.
 
-**Ops Scripts**
-- Local dev: `ops/run_local.bat`
-- Local prod preview: `ops/run_prod_mode_local.bat`
-- Production deploy: `ops/deploy_all_full.bat`
+## Stack
+- **Frontend:** React
+- **Backend:** Node.js + Express
+- **Database:** PostgreSQL
+- **Hosting:** Namecheap cPanel
 
-**Logs**
-- Local logs: `ops/logs/`
+## CI/CD
+Automatic deployment via GitHub Actions on every push to `main` branch.
 
-**Sensitive Files**
-- SSH key: `secrets/ssh_key`
-- Keep `secrets/` out of git (already in `.gitignore`)
-
-**Archive**
-- Safe archive folder: `archive_unused/2026-03-15/`
+> Last updated: 2026-05-10
