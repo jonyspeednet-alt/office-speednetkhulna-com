@@ -82,22 +82,26 @@ jobs:
           port: 21098
           script: |
             set -e
-            cd /home/speeuvmq/office_app
+            APP_DIR="/home/speeuvmq/office_app"
+            REPO_URL="https://github.com/jonyspeednet-alt/office-speednetkhulna-com.git"
 
-            echo "📦 Pulling latest code..."
-            git pull origin main
+            if [ -d "$APP_DIR/.git" ]; then
+              echo "Pulling latest code..."
+              cd $APP_DIR && git pull origin main
+            else
+              echo "First deploy - cloning repository..."
+              git clone $REPO_URL $APP_DIR
+              cd $APP_DIR
+            fi
 
-            echo "📦 Installing server dependencies..."
-            cd server && npm ci --omit=dev && cd ..
+            echo "Installing server dependencies..."
+            cd $APP_DIR/server && npm ci --omit=dev
 
-            echo "🏗️ Building client..."
-            cd client && npm ci && npm run build && cd ..
+            echo "Restarting PM2 processes..."
+            cd $APP_DIR
+            pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
 
-            echo "🔄 Restarting PM2 processes..."
-            pm2 reload ecosystem.config.js --env production
-
-            echo "✅ Deployment complete!"
-
+            echo "Deployment complete!"
       - name: Notify deployment
         if: always()
         run: |
