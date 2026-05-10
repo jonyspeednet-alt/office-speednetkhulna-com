@@ -36,6 +36,9 @@ router.post('/invoice/by-bill/:billId/send-email', requireAnyPermission(['billin
 router.get('/invoice/:resellerId', requirePermission('billing.invoice.view'), controller.getInvoice);
 router.post('/invoice/:resellerId/send-email', requirePermission('billing.invoice.view'), controller.sendInvoiceEmailByReseller);
 
+router.post('/resellers/:id/rate-change', requirePermission('reseller.profile'), controller.changeResellerRate);
+router.get('/resellers/:id/rate-change-logs', requireAnyPermission(['reseller.profile', 'billing.logs.view']), controller.getResellerRateChangeLogs);
+
 module.exports = router;
 
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { addBillingLog, addDiscount, getResellerProfileDetails, updateReseller } from '../services/resellerService';
+import { addBillingLog, addDiscount, getResellerProfileDetails, updateReseller, changeResellerRate, getResellerRateChangeLogs } from '../services/resellerService';
 import {
   getChannelUsers, addChannelUser, updateChannelUser, deleteChannelUser,
   getUserPayments, initMonthlyPayments, recordUserPayment, bulkRecordPayments,
@@ -81,6 +81,10 @@ const ResellerProfile = () => {
   const [showEdit, setShowEdit] = useState(false);
   const [showBillHistory, setShowBillHistory] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [showRateChange, setShowRateChange] = useState(false);
+  const [rateChangeLogs, setRateChangeLogs] = useState([]);
+  const [rateChangeForm, setRateChangeForm] = useState(null);
+  const [rateChangeSaving, setRateChangeSaving] = useState(false);
 
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(getDhakaDateYmd());
@@ -173,6 +177,16 @@ const ResellerProfile = () => {
   };
 
   useEffect(() => { load(); }, [profileId]);
+
+  const loadRateChangeLogs = useCallback(async () => {
+    if (!profileId) return;
+    try {
+      const logs = await getResellerRateChangeLogs(profileId);
+      setRateChangeLogs(logs || []);
+    } catch (_) { /* ignore */ }
+  }, [profileId]);
+
+  useEffect(() => { loadRateChangeLogs(); }, [loadRateChangeLogs]);
 
   useEffect(() => {
     if (data && data.reseller?.partner_type === 'channel_partner' && activeTab === 'bandwidth') {
@@ -324,6 +338,37 @@ const ResellerProfile = () => {
     }
   };
 
+  const openRateChangeModal = () => {
+    const r = data?.reseller || {};
+    setRateChangeForm({
+      effective_date: getDhakaDateYmd(),
+      note: '',
+      rate_iig: Number(r.rate_iig || 0),
+      rate_bdix: Number(r.rate_bdix || 0),
+      rate_ggc: Number(r.rate_ggc || 0),
+      rate_fna: Number(r.rate_fna || 0),
+      rate_cdn: Number(r.rate_cdn || 0),
+      rate_bcdn: Number(r.rate_bcdn || 0),
+      rate_nttn: Number(r.rate_nttn || 0),
+    });
+    setShowRateChange(true);
+  };
+
+  const submitRateChange = async (e) => {
+    e.preventDefault();
+    setRateChangeSaving(true);
+    try {
+      await changeResellerRate(profileId, rateChangeForm);
+      setShowRateChange(false);
+      await load();
+      await loadRateChangeLogs();
+    } catch (err) {
+      window.alert(err?.response?.data?.message || 'রেট পরিবর্তন সেভ হয়নি');
+    } finally {
+      setRateChangeSaving(false);
+    }
+  };
+
   if (loadError) return <div className="p-4 text-danger">{loadError}</div>;
   if (!data) return <div className="p-4">লোড হচ্ছে...</div>;
 
@@ -466,9 +511,23 @@ const ResellerProfile = () => {
                       </div>
                     </div>
                   </div>
-                  <h6 className="fw-bold m-0 text-dark mb-3">Active Packages</h6>
-                  <div className="d-flex flex-column">
-                    {activePackages.length === 0 ? <div className="text-muted">No active package</div> : activePackages.map((item) => (
+
+                  {/* Active Packages + Rate Card */}
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <h6 className="fw-bold m-0 text-dark">Active Packages</h6>
+                    {can.can_edit_profile && can.can_view_financials && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-warning rounded-pill px-3"
+                        onClick={openRateChangeModal}
+                      >
+                        <i className="fas fa-tags me-1" />ব্যান্ডউইথ রেট পরিবর্তন
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="d-flex flex-column mb-3">
+                    {activePackages.length === 0 ? <div className="text-muted small">No active package</div> : activePackages.map((item) => (
                       <div key={item.label} className="d-flex justify-content-between align-items-center border-bottom py-2">
                         <div className="d-flex align-items-center">
                           <i className={`fas ${item.icon} ${item.color} me-3`} style={{ width: 20 }} />
@@ -477,11 +536,83 @@ const ResellerProfile = () => {
                         </div>
                         <div className="text-end">
                           <div className="fw-bold text-dark small">{bw(item.bw)}</div>
-                          {can.can_view_financials ? <div className="text-muted" style={{ fontSize: 10 }}>{Number(item.rate || 0)} Tk/Month</div> : null}
+                          {can.can_view_financials ? (
+                            <div className="text-muted" style={{ fontSize: 10 }}>
+                              <i className="fas fa-tag me-1 text-warning" style={{ fontSize: 9 }} />
+                              {Number(item.rate || 0).toLocaleString('en-BD')} Tk/Month
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ))}
                   </div>
+
+                  {/* Rate Change History */}
+                  {can.can_view_financials && rateChangeLogs.length > 0 && (
+                    <div className="mt-3">
+                      <h6 className="fw-bold small text-muted text-uppercase mb-2">
+                        <i className="fas fa-history me-1" />রেট পরিবর্তনের ইতিহাস
+                      </h6>
+                      <div className="table-responsive" style={{ maxHeight: 220 }}>
+                        <table className="table table-sm table-hover align-middle mb-0" style={{ fontSize: 12 }}>
+                          <thead className="table-light">
+                            <tr>
+                              <th>কার্যকর তারিখ</th>
+                              <th>IIG</th><th>BDIX</th><th>GGC</th><th>FNA</th><th>CDN</th><th>Other</th><th>NTTN</th>
+                              <th>পরিবর্তনকারী</th>
+                              <th>নোট</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rateChangeLogs.map((log) => {
+                              const rateTypes = [
+                                { key: 'iig', label: 'IIG' },
+                                { key: 'bdix', label: 'BDIX' },
+                                { key: 'ggc', label: 'GGC' },
+                                { key: 'fna', label: 'FNA' },
+                                { key: 'cdn', label: 'CDN' },
+                                { key: 'bcdn', label: 'Other' },
+                                { key: 'nttn', label: 'NTTN' },
+                              ];
+                              return (
+                                <tr key={log.id}>
+                                  <td className="fw-bold text-nowrap">
+                                    {new Date(log.effective_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    <div style={{ fontSize: 10 }} className="text-muted">
+                                      {new Date(log.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  </td>
+                                  {rateTypes.map(({ key }) => {
+                                    const cur = Number(log[`rate_${key}`] || 0);
+                                    const prev = Number(log[`prev_rate_${key}`] || 0);
+                                    const changed = cur !== prev;
+                                    return (
+                                      <td key={key} className={changed ? 'fw-bold' : 'text-muted'}>
+                                        {cur > 0 ? cur.toLocaleString('en-BD') : <span className="text-muted">-</span>}
+                                        {changed && prev > 0 && (
+                                          <div style={{ fontSize: 9 }} className={cur > prev ? 'text-danger' : 'text-success'}>
+                                            {cur > prev ? '▲' : '▼'} {prev.toLocaleString('en-BD')}
+                                          </div>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="text-nowrap">
+                                    <span className="badge bg-light text-dark border" style={{ fontSize: 10 }}>
+                                      {log.changed_by || 'System'}
+                                    </span>
+                                  </td>
+                                  <td className="text-muted" style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {log.note || '-'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -830,12 +961,18 @@ const ResellerProfile = () => {
               </>
             ) : (
               <>
-                <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ব্যান্ডউইথ রেট (Tk/Month)</h6>
+                <h6 className="text-primary fw-bold mt-2 mb-1 border-bottom pb-2">ব্যান্ডউইথ বরাদ্দ (Mbps)</h6>
+                <div className="col-12">
+                  <div className="alert alert-info border-0 py-2 small mb-2">
+                    <i className="fas fa-info-circle me-1" />
+                    <strong>রেট পরিবর্তন করতে</strong> এই ফর্ম বন্ধ করে Bandwidth ট্যাবে <strong>"ব্যান্ডউইথ রেট পরিবর্তন"</strong> বাটন ব্যবহার করুন — সেখানে কার্যকর তারিখ ও log সহ পরিবর্তন করা যাবে।
+                  </div>
+                </div>
 
-                {['iig','bdix','ggc','fna','cdn','bcdn','nttn'].map((k) => (
+                {['iig', 'bdix', 'ggc', 'fna', 'cdn', 'bcdn', 'nttn'].map((k) => (
                   <React.Fragment key={k}>
-                    <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} BW</label><input type="number" className="form-control" value={editForm[`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]} onChange={(e) => setEditForm({ ...editForm, [`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]: e.target.value })} /></div>
-                    <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} Rate</label><input type="number" className="form-control" value={editForm[`rate_${k}`]} onChange={(e) => setEditForm({ ...editForm, [`rate_${k}`]: e.target.value })} /></div>
+                    <div className="col-md-3"><label className="form-label text-uppercase">{k === 'bcdn' ? 'Other' : k} BW (Mbps)</label><input type="number" className="form-control" value={editForm[`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]} onChange={(e) => setEditForm({ ...editForm, [`${k === 'nttn' ? 'nttn_capacity' : `${k}_bw`}`]: e.target.value })} /></div>
+                    <div className="col-md-3"><label className="form-label text-uppercase text-muted">{k === 'bcdn' ? 'Other' : k} Rate (Tk) <small className="text-warning">→ আলাদা বাটন</small></label><input type="number" className="form-control form-control-sm bg-light text-muted" value={editForm[`rate_${k}`]} onChange={(e) => setEditForm({ ...editForm, [`rate_${k}`]: e.target.value })} /></div>
                   </React.Fragment>
                 ))}
               </>
@@ -880,6 +1017,93 @@ const ResellerProfile = () => {
             <div className="col-12 text-end">
               <button type="button" className="btn btn-light me-2" onClick={() => setShowEdit(false)}>বন্ধ করুন</button>
               <button className="btn btn-primary" disabled={saving}>{saving ? 'সেভ হচ্ছে...' : 'আপডেট করুন'}</button>
+            </div>
+          </form>
+        </ModalWrap>
+      )}
+
+      {/* Rate Change Modal */}
+      {showRateChange && rateChangeForm && (
+        <ModalWrap title="ব্যান্ডউইথ রেট পরিবর্তন করুন" onClose={() => setShowRateChange(false)}>
+          <form className="row g-3" onSubmit={submitRateChange}>
+            {/* Effective Date & Note */}
+            <div className="col-12">
+              <div className="alert alert-warning border-0 py-2 small mb-0">
+                <i className="fas fa-info-circle me-1" />
+                এই তারিখ থেকে নতুন রেট কার্যকর হবে। বর্তমান মাসের projected bill পুনরায় হিসাব হবে।
+              </div>
+            </div>
+            <div className="col-md-5">
+              <label className="form-label fw-bold">কার্যকর তারিখ <span className="text-danger">*</span></label>
+              <input
+                type="date"
+                className="form-control"
+                value={rateChangeForm.effective_date}
+                onChange={(e) => setRateChangeForm({ ...rateChangeForm, effective_date: e.target.value })}
+                required
+              />
+              <div className="form-text">আজকের তারিখ দিলে এখন থেকেই কার্যকর হবে।</div>
+            </div>
+            <div className="col-md-7">
+              <label className="form-label fw-bold">কারণ / নোট</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="যেমন: নতুন চুক্তি অনুযায়ী রেট পরিবর্তন"
+                value={rateChangeForm.note}
+                onChange={(e) => setRateChangeForm({ ...rateChangeForm, note: e.target.value })}
+              />
+            </div>
+
+            {/* Rate Fields */}
+            <div className="col-12">
+              <h6 className="fw-bold text-primary border-bottom pb-2 mb-3">
+                <i className="fas fa-tags me-1" />নতুন রেট (Tk/Month)
+              </h6>
+              <div className="row g-2">
+                {[
+                  { key: 'iig', label: 'IIG', icon: 'fa-globe-americas', color: 'text-primary' },
+                  { key: 'bdix', label: 'BDIX', icon: 'fa-exchange-alt', color: 'text-success' },
+                  { key: 'ggc', label: 'GGC', icon: 'fa-google', color: 'text-warning' },
+                  { key: 'fna', label: 'FNA', icon: 'fa-network-wired', color: 'text-info' },
+                  { key: 'cdn', label: 'CDN', icon: 'fa-server', color: 'text-danger' },
+                  { key: 'bcdn', label: 'Other', icon: 'fa-hdd', color: 'text-secondary' },
+                  { key: 'nttn', label: 'NTTN', icon: 'fa-broadcast-tower', color: 'text-dark' },
+                ].map(({ key, label, icon, color }) => {
+                  const rateKey = `rate_${key}`;
+                  const bwKey = key === 'nttn' ? 'nttn_capacity' : `${key}_bw`;
+                  const bwVal = Number(reseller[bwKey] || 0);
+                  return (
+                    <div key={key} className="col-md-3 col-6">
+                      <div className={`card border-0 shadow-sm p-2 h-100 ${bwVal === 0 ? 'opacity-50' : ''}`}>
+                        <div className="d-flex align-items-center mb-1">
+                          <i className={`fas ${icon} ${color} me-2`} style={{ fontSize: 13 }} />
+                          <span className="fw-bold small">{label}</span>
+                          {bwVal > 0 && <span className="badge bg-light text-dark border ms-auto" style={{ fontSize: 9 }}>{bwVal} Mbps</span>}
+                        </div>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="form-control form-control-sm"
+                          value={rateChangeForm[rateKey]}
+                          onChange={(e) => setRateChangeForm({ ...rateChangeForm, [rateKey]: e.target.value })}
+                          disabled={bwVal === 0}
+                          placeholder="0"
+                        />
+                        <div className="text-muted mt-1" style={{ fontSize: 10 }}>Tk/Month</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="col-12 text-end border-top pt-3">
+              <button type="button" className="btn btn-light rounded-pill me-2" onClick={() => setShowRateChange(false)}>বাতিল</button>
+              <button className="btn btn-warning fw-bold rounded-pill px-4" disabled={rateChangeSaving}>
+                {rateChangeSaving ? <><span className="spinner-border spinner-border-sm me-1" />সেভ হচ্ছে...</> : <><i className="fas fa-save me-1" />রেট পরিবর্তন সেভ করুন</>}
+              </button>
             </div>
           </form>
         </ModalWrap>

@@ -49,4 +49,7 @@ export const sendInvoiceEmailByBillId = async (billId, payload) => (await apiCli
 
 export const updateMonthlySummaryPayDate = async (reseller_id, date) => (await apiClient.patch('/api/resellers/monthly-summary/next-pay-date', { reseller_id, date })).data;
 
+export const changeResellerRate = async (id, payload) => (await apiClient.post(`/api/resellers/resellers/${id}/rate-change`, payload)).data;
+export const getResellerRateChangeLogs = async (id) => (await apiClient.get(`/api/resellers/resellers/${id}/rate-change-logs`)).data;
+
 

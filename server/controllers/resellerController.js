@@ -190,7 +190,7 @@ const isProdEnv =
 const MONTHLY_SUMMARY_CACHE_TTL_MS = Math.max(
   Number.parseInt(
     process.env.MONTHLY_SUMMARY_CACHE_TTL_MS ||
-      (isProdEnv ? "120000" : "30000"),
+    (isProdEnv ? "120000" : "30000"),
     10,
   ) || (isProdEnv ? 120000 : 30000),
   5000,
@@ -633,7 +633,7 @@ const calculateMonthlyBillBreakdown = async (
           date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), changeDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), cursorDay))}`,
           change_type:
             change.change_type === "increase" ||
-            change.change_type === "decrease"
+              change.change_type === "decrease"
               ? change.change_type
               : "standard",
         });
@@ -896,7 +896,7 @@ const syncSidebarMenus = async () => {
   for (const m of menus) {
     await pool.query(
       "INSERT INTO sidebar_menus (menu_name, link, icon, permission_column, category, sort_order, parent_id, is_visible) " +
-        "SELECT $1,$2,$3,$4,$5,$6,NULL,1 WHERE NOT EXISTS (SELECT 1 FROM sidebar_menus WHERE permission_column = $4 OR link = $2)",
+      "SELECT $1,$2,$3,$4,$5,$6,NULL,1 WHERE NOT EXISTS (SELECT 1 FROM sidebar_menus WHERE permission_column = $4 OR link = $2)",
       m,
     );
   }
@@ -1242,11 +1242,11 @@ const listResellers = async (req, res) => {
     const rows = canViewFinancials
       ? result.rows
       : result.rows.map((r) => ({
-          ...r,
-          monthly_rate: null,
-          due_amount: null,
-          next_pay_date: null,
-        }));
+        ...r,
+        monthly_rate: null,
+        due_amount: null,
+        next_pay_date: null,
+      }));
 
     res.json(rows);
   } catch (error) {
@@ -1492,19 +1492,19 @@ const createReseller = async (req, res) => {
             ) RETURNING id`,
       hasPartnerTypeColumn && hasOtcAppliedMonthColumn
         ? [
+          ...insertValuesBase,
+          otcAppliedMonth,
+          normalizedPartnerType,
+          resellerPassword,
+          joinDate,
+        ]
+        : hasPartnerTypeColumn
+          ? [
             ...insertValuesBase,
-            otcAppliedMonth,
             normalizedPartnerType,
             resellerPassword,
             joinDate,
           ]
-        : hasPartnerTypeColumn
-          ? [
-              ...insertValuesBase,
-              normalizedPartnerType,
-              resellerPassword,
-              joinDate,
-            ]
           : [...insertValuesBase, resellerPassword, joinDate],
     );
 
@@ -2055,31 +2055,31 @@ const getResellerProfileDetails = async (req, res) => {
 
     const safeStats = canViewFinancials
       ? {
-          total_paid_current_month: totalPaidCurrentMonth,
-          total_discount_current_month: totalDiscountCurrentMonth,
-          previous_due_current_month: previousDueCurrentMonth,
-          projected_bill_current_month: projectedBillCurrentMonth,
-          calculation_month: currentMonth,
-          paid_for_due_calculation: paidForDueCalculation,
-          payments_after_last_bill: paymentsAfterLastBill,
-          net_due: netDue,
-          calc_tooltip: calcTooltip,
-          pending_bill_warning: pendingBillWarning,
-          has_current_bill: Boolean(currentBill),
-        }
+        total_paid_current_month: totalPaidCurrentMonth,
+        total_discount_current_month: totalDiscountCurrentMonth,
+        previous_due_current_month: previousDueCurrentMonth,
+        projected_bill_current_month: projectedBillCurrentMonth,
+        calculation_month: currentMonth,
+        paid_for_due_calculation: paidForDueCalculation,
+        payments_after_last_bill: paymentsAfterLastBill,
+        net_due: netDue,
+        calc_tooltip: calcTooltip,
+        pending_bill_warning: pendingBillWarning,
+        has_current_bill: Boolean(currentBill),
+      }
       : {
-          total_paid_current_month: null,
-          total_discount_current_month: null,
-          previous_due_current_month: null,
-          projected_bill_current_month: null,
-          calculation_month: null,
-          paid_for_due_calculation: null,
-          payments_after_last_bill: null,
-          net_due: null,
-          calc_tooltip: null,
-          pending_bill_warning: "",
-          has_current_bill: false,
-        };
+        total_paid_current_month: null,
+        total_discount_current_month: null,
+        previous_due_current_month: null,
+        projected_bill_current_month: null,
+        calculation_month: null,
+        paid_for_due_calculation: null,
+        payments_after_last_bill: null,
+        net_due: null,
+        calc_tooltip: null,
+        pending_bill_warning: "",
+        has_current_bill: false,
+      };
 
     res.json({
       reseller: safeReseller,
@@ -2410,7 +2410,7 @@ const updateReseller = async (req, res) => {
           `UPDATE resellers SET profit_share_percentage = $1 WHERE id = $2`,
           [Math.max(0, Math.min(100, psp)), id],
         )
-        .catch(() => {});
+        .catch(() => { });
     }
 
     if (req.body.channel_user_count !== undefined) {
@@ -2423,7 +2423,7 @@ const updateReseller = async (req, res) => {
           `UPDATE resellers SET channel_user_count = $1 WHERE id = $2`,
           [cuc, id],
         )
-        .catch(() => {});
+        .catch(() => { });
     }
 
     const watchedFields = [
@@ -2541,9 +2541,9 @@ const getStatusNoc = async (req, res) => {
     const rows = canViewFinancials
       ? result.rows
       : result.rows.map((r) => ({
-          ...r,
-          monthly_rate: null,
-        }));
+        ...r,
+        monthly_rate: null,
+      }));
 
     res.json(rows);
   } catch (error) {
@@ -3382,21 +3382,21 @@ const addBillingLog = async (req, res) => {
 
     const result = hasLogTypeColumn
       ? await client.query(
-          `INSERT INTO billing_logs (reseller_id, request_id, log_type, change_desc, transaction_amount, effective_date, created_at)
+        `INSERT INTO billing_logs (reseller_id, request_id, log_type, change_desc, transaction_amount, effective_date, created_at)
            VALUES ($1, NULL, $2, $3, $4, $5, NOW()) RETURNING *`,
-          [
-            reseller_id,
-            normalizedType,
-            note || normalizedType,
-            parsedAmount,
-            effDate,
-          ],
-        )
+        [
+          reseller_id,
+          normalizedType,
+          note || normalizedType,
+          parsedAmount,
+          effDate,
+        ],
+      )
       : await client.query(
-          `INSERT INTO billing_logs (reseller_id, request_id, change_desc, transaction_amount, effective_date, created_at)
+        `INSERT INTO billing_logs (reseller_id, request_id, change_desc, transaction_amount, effective_date, created_at)
            VALUES ($1, NULL, $2, $3, $4, NOW()) RETURNING *`,
-          [reseller_id, note || normalizedType, parsedAmount, effDate],
-        );
+        [reseller_id, note || normalizedType, parsedAmount, effDate],
+      );
 
     await logResellerFinancialChange(client, {
       reseller_id: Number(reseller_id),
@@ -4270,8 +4270,8 @@ const sendInvoiceEmailByReseller = async (req, res) => {
       resellerResult.rows[0].name || `Reseller #${resellerId}`;
     const fromAddress = String(
       process.env.SMTP_FROM ||
-        process.env.SMTP_USER ||
-        "billing@speednetkhulna.com",
+      process.env.SMTP_USER ||
+      "billing@speednetkhulna.com",
     ).trim();
     const snapshot = parseSnapshotDataUrl(req.body?.snapshot_data_url);
     if (req.body?.snapshot_data_url && !snapshot) {
@@ -4300,12 +4300,12 @@ const sendInvoiceEmailByReseller = async (req, res) => {
       html,
       attachments: snapshot
         ? [
-            {
-              filename: attachmentName,
-              content: snapshot.buffer,
-              contentType: snapshot.mime,
-            },
-          ]
+          {
+            filename: attachmentName,
+            content: snapshot.buffer,
+            contentType: snapshot.mime,
+          },
+        ]
         : [],
     });
 
@@ -4531,8 +4531,8 @@ const sendInvoiceEmailByBillId = async (req, res) => {
     const resellerName = bill.reseller_name || `Reseller #${bill.reseller_id}`;
     const fromAddress = String(
       process.env.SMTP_FROM ||
-        process.env.SMTP_USER ||
-        "billing@speednetkhulna.com",
+      process.env.SMTP_USER ||
+      "billing@speednetkhulna.com",
     ).trim();
     const snapshot = parseSnapshotDataUrl(req.body?.snapshot_data_url);
     if (req.body?.snapshot_data_url && !snapshot) {
@@ -4560,12 +4560,12 @@ const sendInvoiceEmailByBillId = async (req, res) => {
       html,
       attachments: snapshot
         ? [
-            {
-              filename: attachmentName,
-              content: snapshot.buffer,
-              contentType: snapshot.mime,
-            },
-          ]
+          {
+            filename: attachmentName,
+            content: snapshot.buffer,
+            contentType: snapshot.mime,
+          },
+        ]
         : [],
     });
 
@@ -4581,6 +4581,206 @@ const sendInvoiceEmailByBillId = async (req, res) => {
     res.status(500).json({ message: "Failed to send static invoice email" });
   }
 };
+// ─── Rate Change Log ────────────────────────────────────────────────────────
+
+let rateChangeLogTableReady = false;
+
+const initRateChangeLogTable = async () => {
+  if (rateChangeLogTableReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reseller_rate_change_logs (
+      id            BIGSERIAL PRIMARY KEY,
+      reseller_id   INTEGER NOT NULL,
+      changed_by_id INTEGER NULL,
+      changed_by    TEXT NULL,
+      changed_by_role TEXT NULL,
+      effective_date DATE NOT NULL,
+      note          TEXT NULL,
+      rate_iig      NUMERIC(14,2) NULL,
+      rate_bdix     NUMERIC(14,2) NULL,
+      rate_ggc      NUMERIC(14,2) NULL,
+      rate_fna      NUMERIC(14,2) NULL,
+      rate_cdn      NUMERIC(14,2) NULL,
+      rate_bcdn     NUMERIC(14,2) NULL,
+      rate_nttn     NUMERIC(14,2) NULL,
+      prev_rate_iig  NUMERIC(14,2) NULL,
+      prev_rate_bdix NUMERIC(14,2) NULL,
+      prev_rate_ggc  NUMERIC(14,2) NULL,
+      prev_rate_fna  NUMERIC(14,2) NULL,
+      prev_rate_cdn  NUMERIC(14,2) NULL,
+      prev_rate_bcdn NUMERIC(14,2) NULL,
+      prev_rate_nttn NUMERIC(14,2) NULL,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_reseller_rate_change_logs_reseller ON reseller_rate_change_logs (reseller_id, effective_date DESC)`);
+  rateChangeLogTableReady = true;
+};
+
+const changeResellerRate = async (req, res) => {
+  try {
+    await initialize();
+    await initRateChangeLogTable();
+    const { id } = req.params;
+
+    const {
+      effective_date,
+      note,
+      rate_iig,
+      rate_bdix,
+      rate_ggc,
+      rate_fna,
+      rate_cdn,
+      rate_bcdn,
+      rate_nttn,
+    } = req.body;
+
+    if (!effective_date || !/^\d{4}-\d{2}-\d{2}$/.test(String(effective_date))) {
+      return res.status(400).json({ message: "effective_date (YYYY-MM-DD) is required" });
+    }
+
+    const hasAnyRate = [rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn]
+      .some((v) => v !== undefined && v !== null && v !== '');
+    if (!hasAnyRate) {
+      return res.status(400).json({ message: "At least one rate field is required" });
+    }
+
+    // Fetch current rates
+    const beforeResult = await pool.query(
+      `SELECT rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn
+       FROM resellers WHERE id = $1`,
+      [id],
+    );
+    if (!beforeResult.rows.length) {
+      return res.status(404).json({ message: "Reseller not found" });
+    }
+    const before = beforeResult.rows[0];
+
+    const parseR = (v, fallback) => (v !== undefined && v !== null && v !== '') ? parseAmount(v, 0) : fallback;
+
+    const newRates = {
+      rate_iig: parseR(rate_iig, Number(before.rate_iig || 0)),
+      rate_bdix: parseR(rate_bdix, Number(before.rate_bdix || 0)),
+      rate_ggc: parseR(rate_ggc, Number(before.rate_ggc || 0)),
+      rate_fna: parseR(rate_fna, Number(before.rate_fna || 0)),
+      rate_cdn: parseR(rate_cdn, Number(before.rate_cdn || 0)),
+      rate_bcdn: parseR(rate_bcdn, Number(before.rate_bcdn || 0)),
+      rate_nttn: parseR(rate_nttn, Number(before.rate_nttn || 0)),
+    };
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Update resellers table
+      await client.query(
+        `UPDATE resellers SET
+          rate_iig  = $1,
+          rate_bdix = $2,
+          rate_ggc  = $3,
+          rate_fna  = $4,
+          rate_cdn  = $5,
+          rate_bcdn = $6,
+          rate_nttn = $7,
+          last_activity_date = NOW()
+         WHERE id = $8`,
+        [
+          newRates.rate_iig, newRates.rate_bdix, newRates.rate_ggc,
+          newRates.rate_fna, newRates.rate_cdn, newRates.rate_bcdn,
+          newRates.rate_nttn, id,
+        ],
+      );
+
+      // Insert rate change log
+      const logResult = await client.query(
+        `INSERT INTO reseller_rate_change_logs
+          (reseller_id, changed_by_id, changed_by, changed_by_role, effective_date, note,
+           rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+           prev_rate_iig, prev_rate_bdix, prev_rate_ggc, prev_rate_fna, prev_rate_cdn, prev_rate_bcdn, prev_rate_nttn)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         RETURNING id`,
+        [
+          id,
+          req.user?.id || null,
+          req.user?.full_name || null,
+          req.user?.role_name || req.user?.role || null,
+          effective_date,
+          note || null,
+          newRates.rate_iig, newRates.rate_bdix, newRates.rate_ggc,
+          newRates.rate_fna, newRates.rate_cdn, newRates.rate_bcdn, newRates.rate_nttn,
+          Number(before.rate_iig || 0), Number(before.rate_bdix || 0), Number(before.rate_ggc || 0),
+          Number(before.rate_fna || 0), Number(before.rate_cdn || 0), Number(before.rate_bcdn || 0),
+          Number(before.rate_nttn || 0),
+        ],
+      );
+
+      // Financial audit log
+      const actor = getActor(req);
+      const meta = getReqMeta(req);
+      const fieldChanges = {};
+      ['rate_iig', 'rate_bdix', 'rate_ggc', 'rate_fna', 'rate_cdn', 'rate_bcdn', 'rate_nttn'].forEach((k) => {
+        const prev = Number(before[k] || 0);
+        const next = newRates[k];
+        if (prev !== next) fieldChanges[k] = { before: prev, after: next };
+      });
+
+      await logResellerFinancialChange(client, {
+        reseller_id: id,
+        ...actor,
+        action_type: 'RATE_CHANGE',
+        reference_table: 'reseller_rate_change_logs',
+        reference_id: logResult.rows[0].id,
+        field_changes: fieldChanges,
+        note: `Rate change effective ${effective_date}${note ? `: ${note}` : ''}`,
+        request_payload: req.body,
+        ...meta,
+      });
+
+      await client.query('COMMIT');
+
+      // Refresh projected bill
+      try {
+        await refreshProjectedBillForCurrentMonth(id);
+      } catch (_) { /* best-effort */ }
+
+      res.json({ success: true, log_id: logResult.rows[0].id });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("changeResellerRate:", error);
+    res.status(500).json({ message: "Failed to save rate change" });
+  }
+};
+
+const getResellerRateChangeLogs = async (req, res) => {
+  try {
+    await initRateChangeLogTable();
+    const { id } = req.params;
+    const limit = Math.min(Number(req.query.limit || 20), 100);
+
+    const result = await pool.query(
+      `SELECT id, reseller_id, changed_by, changed_by_role, effective_date, note,
+              rate_iig, rate_bdix, rate_ggc, rate_fna, rate_cdn, rate_bcdn, rate_nttn,
+              prev_rate_iig, prev_rate_bdix, prev_rate_ggc, prev_rate_fna, prev_rate_cdn, prev_rate_bcdn, prev_rate_nttn,
+              created_at
+       FROM reseller_rate_change_logs
+       WHERE reseller_id = $1
+       ORDER BY effective_date DESC, created_at DESC
+       LIMIT $2`,
+      [id, limit],
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("getResellerRateChangeLogs:", error);
+    res.status(500).json({ message: "Failed to load rate change logs" });
+  }
+};
+
 module.exports = {
   listResellers,
   getPartnerSheetList,
@@ -4610,4 +4810,6 @@ module.exports = {
   sendInvoiceEmailByBillId,
   syncProjectedBillsForCurrentMonth,
   refreshProjectedBillForCurrentMonth,
+  changeResellerRate,
+  getResellerRateChangeLogs,
 };
