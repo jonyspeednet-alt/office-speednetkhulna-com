@@ -54,7 +54,7 @@ jobs:
         working-directory: client
         run: npm run build
         env:
-          VITE_API_URL: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && 'https://office.speednetkhulna.com/api' || 'http://localhost:5000' }}
+          VITE_API_URL: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' && 'https://office.speednetkhulna.com' || 'http://localhost:5000' }}
 
       - name: Upload client build artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
