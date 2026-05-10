@@ -229,10 +229,6 @@ const Invoice = () => {
   const netPayableRounded = Number(netPayable.toFixed(2));
   const hasLegacyAdjustment = Math.abs(adj) > 0.0001;
 
-  const typeCounts = {};
-  displayItems.forEach((item) => { typeCounts[item.desc] = (typeCounts[item.desc] || 0) + 1; });
-  const typeShown = {};
-
   return (
     <div className="container-fluid py-3 reseller-page">
       <div className="d-flex justify-content-between align-items-center mb-3 no-print" style={{ maxWidth: 850, margin: '0 auto 16px' }}>
@@ -324,21 +320,73 @@ const Invoice = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayItems.map((item, idx) => {
-                    const isFirst = !typeShown[item.desc];
-                    if (isFirst) typeShown[item.desc] = true;
-                    return (
-                      <tr key={idx}>
-                        {isFirst && <td rowSpan={typeCounts[item.desc]} className="fw-bold align-middle">{item.desc}</td>}
-                        <td className="text-center"><StatusBadge type={item.change_type} /></td>
-                        <td><small className="text-muted">{item.date_range}</small></td>
-                        <td className="text-center">{item.bw}</td>
-                        <td className="text-center">{fmt(item.rate)}</td>
-                        <td className="text-center">{item.days}</td>
-                        <td className="text-end fw-bold">{fmt(item.total)}</td>
-                      </tr>
-                    );
-                  })}
+                  {(() => {
+                    // Group items by desc to detect multi-segment types
+                    const groups = {};
+                    displayItems.forEach((item) => {
+                      if (!groups[item.desc]) groups[item.desc] = [];
+                      groups[item.desc].push(item);
+                    });
+
+                    const rows = [];
+                    Object.entries(groups).forEach(([desc, segItems]) => {
+                      const isMulti = segItems.length > 1;
+                      const subtotal = segItems.reduce((s, i) => s + Number(i.total || 0), 0);
+
+                      segItems.forEach((item, si) => {
+                        const isFirst = si === 0;
+                        rows.push(
+                          <tr key={`${desc}-${si}`} className={isMulti ? 'inv-segment-row' : ''}>
+                            {/* Description cell — rowSpan covers all segments + subtotal row */}
+                            {isFirst && (
+                              <td
+                                rowSpan={isMulti ? segItems.length + 1 : 1}
+                                className="fw-bold align-middle"
+                              >
+                                {desc}
+                              </td>
+                            )}
+                            <td className="text-center"><StatusBadge type={item.change_type} /></td>
+                            <td><small className="text-muted">{item.date_range}</small></td>
+                            <td className="text-center">{item.bw}</td>
+                            <td className="text-center">
+                              {fmt(item.rate)}
+                              {/* Show rate change indicator for non-first segments */}
+                              {isMulti && si > 0 && (() => {
+                                const prevRate = segItems[si - 1].rate;
+                                if (Number(item.rate) !== Number(prevRate)) {
+                                  return (
+                                    <span className={`ms-1 small ${Number(item.rate) > Number(prevRate) ? 'text-danger' : 'text-success'}`}>
+                                      {Number(item.rate) > Number(prevRate) ? '▲' : '▼'}
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </td>
+                            <td className="text-center">{item.days}</td>
+                            <td className="text-end fw-bold">{fmt(item.total)}</td>
+                          </tr>
+                        );
+                      });
+
+                      // Subtotal row for multi-segment types
+                      if (isMulti) {
+                        rows.push(
+                          <tr key={`${desc}-subtotal`} className="inv-subtotal-row">
+                            <td colSpan={5} className="text-end text-muted" style={{ fontSize: 11, paddingTop: 6, paddingBottom: 6 }}>
+                              <i className="fas fa-equals me-1" />{desc} মোট ({segItems.length}টি সেগমেন্ট)
+                            </td>
+                            <td className="text-end fw-bold" style={{ paddingTop: 6, paddingBottom: 6 }}>
+                              {fmt(subtotal)}
+                            </td>
+                          </tr>
+                        );
+                      }
+                    });
+
+                    return rows;
+                  })()}
                 </tbody>
               </table>
             ) : (

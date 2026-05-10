@@ -150,7 +150,9 @@
   color: #0f172a;
 }
 
-.text-primary-custom { color: #4318ff !important; }
+.text-primary-custom {
+  color: #4318ff !important;
+}
 
 /* --- Table --- */
 .inv-table {
@@ -215,9 +217,20 @@
   display: inline-block;
 }
 
-.badge-increase { background: #dcfce7; color: #166534; }
-.badge-decrease { background: #fee2e2; color: #991b1b; }
-.badge-standard { background: #e0f2fe; color: #075985; }
+.badge-increase {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-decrease {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-standard {
+  background: #e0f2fe;
+  color: #075985;
+}
 
 /* --- Summary --- */
 .inv-summary td {
@@ -256,9 +269,19 @@
 
 /* --- Print --- */
 @media print {
-  body { background: #fff !important; }
-  .no-print, .btn, .sidebar, nav,
-  .layout-sidebar, .sidebar-overlay, .mobile-toggle { display: none !important; }
+  body {
+    background: #fff !important;
+  }
+
+  .no-print,
+  .btn,
+  .sidebar,
+  nav,
+  .layout-sidebar,
+  .sidebar-overlay,
+  .mobile-toggle {
+    display: none !important;
+  }
 
   .inv-container {
     box-shadow: none !important;
@@ -269,7 +292,9 @@
 
   .inv-header,
   .inv-body,
-  .inv-footer { padding: 20px 30px !important; }
+  .inv-footer {
+    padding: 20px 30px !important;
+  }
 
   .inv-table th {
     background-color: #f1f5f9 !important;
@@ -285,4 +310,21 @@
     padding: 0 !important;
     width: 100% !important;
   }
+}
+
+/* ── Multi-segment rate change rows ── */
+.inv-segment-row td {
+  background: #fafbff !important;
+  font-size: 13px;
+}
+
+.inv-segment-row td:not(:first-child) {
+  padding-left: 20px;
+}
+
+.inv-subtotal-row td {
+  background: #f1f5f9 !important;
+  border-top: 1px dashed #cbd5e1 !important;
+  font-size: 12px;
+  color: #475569;
 }
