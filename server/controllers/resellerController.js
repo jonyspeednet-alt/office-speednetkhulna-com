@@ -1,5 +1,5 @@
-const pool = require("../../utilities/db");
-const { getActor, getReqMeta } = require("../../utilities/resellerFinancialAudit");
+const pool = require("../utilities/db");
+const { getActor, getReqMeta } = require("../utilities/resellerFinancialAudit");
 const { listResellers, createReseller, getResellerProfile } = require("./reseller/profile");
 const { getResellerProfileDetails } = require("./reseller/details");
 const { updateReseller } = require("./reseller/update");
