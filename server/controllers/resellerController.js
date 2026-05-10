@@ -581,7 +581,9 @@ const calculateMonthlyBillBreakdown = async (
     const changeLogResult = await pool.query(
       `SELECT effective_date::date AS effective_date,
               prev_rate_iig, prev_rate_bdix, prev_rate_ggc, prev_rate_fna,
-              prev_rate_cdn, prev_rate_bcdn, prev_rate_nttn
+              prev_rate_cdn, prev_rate_bcdn, prev_rate_nttn,
+              rate_iig, rate_bdix, rate_ggc, rate_fna,
+              rate_cdn, rate_bcdn, rate_nttn
        FROM reseller_rate_change_logs
        WHERE reseller_id = $1
        ORDER BY effective_date ASC`,
@@ -590,16 +592,40 @@ const calculateMonthlyBillBreakdown = async (
     for (const row of changeLogResult.rows) {
       const dateStr = toDateOnlyString(row.effective_date);
       if (!dateStr) continue;
-      const prevColMap = {
-        IIG: 'prev_rate_iig', BDIX: 'prev_rate_bdix', GGC: 'prev_rate_ggc',
-        FNA: 'prev_rate_fna', CDN: 'prev_rate_cdn', BCDN: 'prev_rate_bcdn', NTTN: 'prev_rate_nttn',
+      const rateColMap = {
+        IIG: ['prev_rate_iig', 'rate_iig'],
+        BDIX: ['prev_rate_bdix', 'rate_bdix'],
+        GGC: ['prev_rate_ggc', 'rate_ggc'],
+        FNA: ['prev_rate_fna', 'rate_fna'],
+        CDN: ['prev_rate_cdn', 'rate_cdn'],
+        BCDN: ['prev_rate_bcdn', 'rate_bcdn'],
+        NTTN: ['prev_rate_nttn', 'rate_nttn'],
       };
-      for (const [bwType, col] of Object.entries(prevColMap)) {
-        if (row[col] != null) {
+      for (const [bwType, [prevCol, nextCol]] of Object.entries(rateColMap)) {
+        if (row[prevCol] != null) {
           if (!rateChangeLogMap[bwType]) rateChangeLogMap[bwType] = {};
           // Only keep the earliest entry per bwType per date
           if (!rateChangeLogMap[bwType][dateStr]) {
-            rateChangeLogMap[bwType][dateStr] = Number(row[col]);
+            rateChangeLogMap[bwType][dateStr] = Number(row[prevCol]);
+          }
+        }
+        const nextRate = parseAmount(row[nextCol], NaN);
+        const prevRate = parseAmount(row[prevCol], NaN);
+        if (
+          Number.isFinite(nextRate) &&
+          Number.isFinite(prevRate) &&
+          nextRate !== prevRate &&
+          dateStr <= info.monthEndStr
+        ) {
+          if (!rateHistoryByType[bwType]) rateHistoryByType[bwType] = [];
+          const hasExistingHistory = rateHistoryByType[bwType].some(
+            (entry) => entry.effective_date === dateStr,
+          );
+          if (!hasExistingHistory) {
+            rateHistoryByType[bwType].push({
+              rate: nextRate,
+              effective_date: dateStr,
+            });
           }
         }
       }
@@ -1168,6 +1194,8 @@ const initialize = async () => {
             created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
           )
         `);
+        await pool.query(`ALTER TABLE reseller_rate_history ADD COLUMN IF NOT EXISTS source VARCHAR(40) DEFAULT 'rate_change'`);
+        await pool.query(`ALTER TABLE reseller_rate_history ADD COLUMN IF NOT EXISTS note TEXT NULL`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_reseller_rate_history_reseller ON reseller_rate_history (reseller_id, effective_date ASC)`);
         await pool.query(`CREATE INDEX IF NOT EXISTS idx_reseller_rate_history_type ON reseller_rate_history (reseller_id, bw_type, effective_date ASC)`);
       } catch (err) {
@@ -4873,7 +4901,6 @@ const changeResellerRate = async (req, res) => {
         NTTN: newRates.rate_nttn,
       };
       for (const [bwType, newRate] of Object.entries(bwTypeMap)) {
-        const prevRateKey = `prev_rate_${bwType.toLowerCase()}`;
         const prevRate = Number(before[`rate_${bwType.toLowerCase()}`] || 0);
         if (newRate !== prevRate) {
           // Delete any existing entry for same reseller+bwType+effective_date to avoid duplicates
@@ -4882,9 +4909,9 @@ const changeResellerRate = async (req, res) => {
             [id, bwType, effective_date],
           );
           await client.query(
-            `INSERT INTO reseller_rate_history (reseller_id, bw_type, rate, effective_date, source, note)
-             VALUES ($1, $2, $3, $4::date, 'rate_change', $5)`,
-            [id, bwType, newRate, effective_date, note || null],
+            `INSERT INTO reseller_rate_history (reseller_id, bw_type, rate, effective_date)
+             VALUES ($1, $2, $3, $4::date)`,
+            [id, bwType, newRate, effective_date],
           );
         }
       }
