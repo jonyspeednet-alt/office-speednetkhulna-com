@@ -358,10 +358,13 @@ const ResellerProfile = () => {
     e.preventDefault();
     setRateChangeSaving(true);
     try {
-      await changeResellerRate(profileId, rateChangeForm);
+      const result = await changeResellerRate(profileId, rateChangeForm);
       setShowRateChange(false);
       await load();
       await loadRateChangeLogs();
+      if (result?.new_projected_bill !== undefined && result?.new_projected_bill !== null) {
+        window.alert(`✅ রেট পরিবর্তন সফল!\n\nনতুন Projected Bill: ${Number(result.new_projected_bill).toLocaleString('en-BD', { minimumFractionDigits: 2 })} Tk`);
+      }
     } catch (err) {
       window.alert(err?.response?.data?.message || 'রেট পরিবর্তন সেভ হয়নি');
     } finally {
@@ -1098,6 +1101,69 @@ const ResellerProfile = () => {
                 })}
               </div>
             </div>
+
+            {/* Impact Preview */}
+            {rateChangeForm && (() => {
+              const bwTypes = [
+                { key: 'iig', label: 'IIG', bwKey: 'iig_bw' },
+                { key: 'bdix', label: 'BDIX', bwKey: 'bdix_bw' },
+                { key: 'ggc', label: 'GGC', bwKey: 'ggc_bw' },
+                { key: 'fna', label: 'FNA', bwKey: 'fna_bw' },
+                { key: 'cdn', label: 'CDN', bwKey: 'cdn_bw' },
+                { key: 'bcdn', label: 'Other', bwKey: 'bcdn_bw' },
+                { key: 'nttn', label: 'NTTN', bwKey: 'nttn_capacity' },
+              ];
+              const changes = bwTypes.filter(({ key }) => {
+                const oldRate = Number(reseller[`rate_${key}`] || 0);
+                const newRate = Number(rateChangeForm[`rate_${key}`] || 0);
+                return oldRate !== newRate && Number(reseller[key === 'nttn' ? 'nttn_capacity' : `${key}_bw`] || 0) > 0;
+              });
+              if (changes.length === 0) return null;
+              const oldTotal = bwTypes.reduce((s, { key }) => {
+                const bwKey = key === 'nttn' ? 'nttn_capacity' : `${key}_bw`;
+                return s + Number(reseller[bwKey] || 0) * Number(reseller[`rate_${key}`] || 0);
+              }, 0);
+              const newTotal = bwTypes.reduce((s, { key }) => {
+                const bwKey = key === 'nttn' ? 'nttn_capacity' : `${key}_bw`;
+                return s + Number(reseller[bwKey] || 0) * Number(rateChangeForm[`rate_${key}`] || 0);
+              }, 0);
+              const diff = newTotal - oldTotal;
+              return (
+                <div className="col-12">
+                  <div className={`alert border-0 py-2 ${diff > 0 ? 'alert-danger' : diff < 0 ? 'alert-success' : 'alert-secondary'}`}>
+                    <div className="d-flex justify-content-between align-items-center">
+                      <div>
+                        <strong><i className="fas fa-calculator me-1" />Bill Impact Preview</strong>
+                        <div className="small mt-1">
+                          {changes.map(({ key, label }) => {
+                            const bwKey = key === 'nttn' ? 'nttn_capacity' : `${key}_bw`;
+                            const bw = Number(reseller[bwKey] || 0);
+                            const oldR = Number(reseller[`rate_${key}`] || 0);
+                            const newR = Number(rateChangeForm[`rate_${key}`] || 0);
+                            const d = (newR - oldR) * bw;
+                            return (
+                              <span key={key} className="me-3">
+                                <strong>{label}:</strong> {oldR.toLocaleString()} → {newR.toLocaleString()} Tk
+                                <span className={d > 0 ? 'text-danger ms-1' : 'text-success ms-1'}>
+                                  ({d > 0 ? '+' : ''}{d.toLocaleString()} Tk/mo)
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-end ms-3">
+                        <div className="small text-muted">মাসিক বিল পরিবর্তন</div>
+                        <div className={`fw-bold fs-6 ${diff > 0 ? 'text-danger' : 'text-success'}`}>
+                          {diff > 0 ? '+' : ''}{diff.toLocaleString('en-BD', { minimumFractionDigits: 2 })} Tk
+                        </div>
+                        <div className="small text-muted">{oldTotal.toLocaleString()} → {newTotal.toLocaleString()} Tk</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="col-12 text-end border-top pt-3">
               <button type="button" className="btn btn-light rounded-pill me-2" onClick={() => setShowRateChange(false)}>বাতিল</button>

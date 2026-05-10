@@ -1,7 +1,7 @@
 ﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
-import { getInvoice, getInvoiceByBillId, getResellers, sendInvoiceEmail, sendInvoiceEmailByBillId } from '../services/resellerService';
+import { getInvoice, getInvoiceByBillId, getResellers, sendInvoiceEmail, sendInvoiceEmailByBillId, getResellerRateChangeLogs } from '../services/resellerService';
 import BrandLogo from '../components/BrandLogo';
 import { t } from '../i18n';
 import '../styles/Invoice.css';
@@ -53,6 +53,7 @@ const Invoice = () => {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [rateChangeLogs, setRateChangeLogs] = useState([]);
   const invoiceRef = useRef(null);
 
   useEffect(() => {
@@ -95,6 +96,13 @@ const Invoice = () => {
       loadInvoice();
     }
   }, [billId, resellerId, month, loadInvoice]);
+
+  // Load rate change logs when reseller is known
+  useEffect(() => {
+    const rid = resellerId || data?.reseller?.id;
+    if (!rid) return;
+    getResellerRateChangeLogs(rid).then(setRateChangeLogs).catch(() => { });
+  }, [resellerId, data?.reseller?.id]);
 
   const downloadPNG = async () => {
     if (!invoiceRef.current || downloading) return;
@@ -342,7 +350,49 @@ const Invoice = () => {
           </div>
 
           <div className="row mt-4">
-            <div className="col-md-6" />
+            <div className="col-md-6">
+              {/* Rate Change Info for this billing month */}
+              {rateChangeLogs.length > 0 && (() => {
+                const monthStart = month.slice(0, 7) + '-01';
+                const monthEnd = month.slice(0, 7) + '-31';
+                const logsThisMonth = rateChangeLogs.filter((l) => {
+                  const d = String(l.effective_date).slice(0, 10);
+                  return d >= monthStart && d <= monthEnd;
+                });
+                if (logsThisMonth.length === 0) return null;
+                return (
+                  <div className="no-print mb-3">
+                    <div className="alert alert-warning border-0 py-2 small">
+                      <strong><i className="fas fa-tags me-1" />এই মাসে রেট পরিবর্তন হয়েছে</strong>
+                      {logsThisMonth.map((log) => (
+                        <div key={log.id} className="mt-1 border-top pt-1">
+                          <span className="badge bg-warning text-dark me-1">
+                            {new Date(log.effective_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} থেকে
+                          </span>
+                          {['iig', 'bdix', 'ggc', 'fna', 'cdn', 'bcdn', 'nttn'].map((k) => {
+                            const cur = Number(log[`rate_${k}`] || 0);
+                            const prev = Number(log[`prev_rate_${k}`] || 0);
+                            if (cur === prev || (cur === 0 && prev === 0)) return null;
+                            return (
+                              <span key={k} className="me-2">
+                                <strong>{k.toUpperCase()}:</strong> {prev.toLocaleString()} → {cur.toLocaleString()} Tk
+                                <span className={cur > prev ? 'text-danger ms-1' : 'text-success ms-1'}>
+                                  ({cur > prev ? '▲' : '▼'})
+                                </span>
+                              </span>
+                            );
+                          })}
+                          {log.note && <div className="text-muted fst-italic mt-1">নোট: {log.note}</div>}
+                        </div>
+                      ))}
+                      <div className="mt-1 text-muted" style={{ fontSize: 10 }}>
+                        * Pro-rata calculation: রেট পরিবর্তনের তারিখ থেকে নতুন রেট apply হয়েছে
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
             <div className="col-md-6">
               <table className="table table-borderless inv-summary mb-0">
                 <tbody>

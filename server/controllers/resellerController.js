@@ -1058,6 +1058,24 @@ const initialize = async () => {
       } catch (err) {
         console.warn("resellers channel_partner columns init warning:", err.message);
       }
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS reseller_rate_history (
+            id            BIGSERIAL PRIMARY KEY,
+            reseller_id   INTEGER NOT NULL,
+            bw_type       VARCHAR(20) NOT NULL,
+            rate          NUMERIC(14,2) NOT NULL,
+            effective_date DATE NOT NULL,
+            source        VARCHAR(40) DEFAULT 'rate_change',
+            note          TEXT NULL,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_reseller_rate_history_reseller ON reseller_rate_history (reseller_id, effective_date ASC)`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_reseller_rate_history_type ON reseller_rate_history (reseller_id, bw_type, effective_date ASC)`);
+      } catch (err) {
+        console.warn("reseller_rate_history init warning:", err.message);
+      }
       await detectJoiningDateColumn();
       await detectPartnerTypeColumn();
       await detectOtcAppliedMonthColumn();
@@ -4747,6 +4765,33 @@ const changeResellerRate = async (req, res) => {
         ],
       );
 
+      // Insert into reseller_rate_history for billing calculation (pro-rata support)
+      const bwTypeMap = {
+        IIG: newRates.rate_iig,
+        BDIX: newRates.rate_bdix,
+        GGC: newRates.rate_ggc,
+        FNA: newRates.rate_fna,
+        CDN: newRates.rate_cdn,
+        BCDN: newRates.rate_bcdn,
+        NTTN: newRates.rate_nttn,
+      };
+      for (const [bwType, newRate] of Object.entries(bwTypeMap)) {
+        const prevRateKey = `prev_rate_${bwType.toLowerCase()}`;
+        const prevRate = Number(before[`rate_${bwType.toLowerCase()}`] || 0);
+        if (newRate !== prevRate) {
+          // Delete any existing entry for same reseller+bwType+effective_date to avoid duplicates
+          await client.query(
+            `DELETE FROM reseller_rate_history WHERE reseller_id=$1 AND bw_type=$2 AND effective_date=$3::date`,
+            [id, bwType, effective_date],
+          );
+          await client.query(
+            `INSERT INTO reseller_rate_history (reseller_id, bw_type, rate, effective_date, source, note)
+             VALUES ($1, $2, $3, $4::date, 'rate_change', $5)`,
+            [id, bwType, newRate, effective_date, note || null],
+          );
+        }
+      }
+
       // Financial audit log
       const actor = getActor(req);
       const meta = getReqMeta(req);
@@ -4772,11 +4817,12 @@ const changeResellerRate = async (req, res) => {
       await client.query('COMMIT');
 
       // Refresh projected bill
+      let newProjectedBill = null;
       try {
-        await refreshProjectedBillForCurrentMonth(id);
+        newProjectedBill = await refreshProjectedBillForCurrentMonth(id);
       } catch (_) { /* best-effort */ }
 
-      res.json({ success: true, log_id: logResult.rows[0].id });
+      res.json({ success: true, log_id: logResult.rows[0].id, new_projected_bill: newProjectedBill });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
