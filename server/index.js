@@ -100,7 +100,8 @@ app.get('/api/health', async (req, res) => {
 
 // ── Frontend SPA Fallback ──────────────────────────────────
 const frontendIndexPath = path.join(__dirname, '../client/dist/index.html');
-app.get('*', (req, res, next) => {
+app.use((req, res, next) => {
+    if (!['GET', 'HEAD'].includes(req.method)) return next();
     if (req.path.startsWith('/api')) return next();
     if (fs.existsSync(frontendIndexPath)) {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

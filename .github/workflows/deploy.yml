@@ -150,6 +150,21 @@ jobs:
             cd "$APP_DIR"
             pm2 reload ecosystem.config.js --only office-api-a,office-api-b --env production || pm2 start ecosystem.config.js --only office-api-a,office-api-b --env production
 
+            echo "Checking backend health..."
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if curl -fsS --max-time 10 http://127.0.0.1:5000/api/health/live >/dev/null &&
+                 curl -fsS --max-time 10 http://127.0.0.1:5001/api/health/live >/dev/null; then
+                echo "Backend health OK"
+                break
+              fi
+              if [ "$attempt" = "10" ]; then
+                echo "Backend health check failed"
+                pm2 status office-api-a office-api-b --no-color || true
+                exit 1
+              fi
+              sleep 3
+            done
+
             echo "Deployment complete!"
       - name: Notify deployment
         if: always()
