@@ -84,3 +84,9 @@ audit_logs_dump.txt
 # PHP proxy files (use Nginx/Apache config instead)
 proxy_*.php
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
