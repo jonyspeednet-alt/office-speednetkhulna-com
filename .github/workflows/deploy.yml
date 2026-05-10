@@ -148,7 +148,11 @@ jobs:
 
             echo "Restarting PM2 processes..."
             cd "$APP_DIR"
-            pm2 reload ecosystem.config.js --only office-api-a,office-api-b --env production || pm2 start ecosystem.config.js --only office-api-a,office-api-b --env production
+            export PM2_HOME="/home/speeuvmq/.pm2"
+            export PATH="/home/speeuvmq/.nvm/versions/node/v24.13.1/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+            PM2_BIN="$(command -v pm2 || ls -1 /home/speeuvmq/.nvm/versions/node/*/bin/pm2 2>/dev/null | tail -n 1)"
+            $PM2_BIN reload ecosystem.config.js --only office-api-a,office-api-b --env production --update-env || $PM2_BIN start ecosystem.config.js --only office-api-a,office-api-b --env production
+            $PM2_BIN save
 
             echo "Checking backend health..."
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
