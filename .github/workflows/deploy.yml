@@ -82,7 +82,7 @@ jobs:
           port: 21098
           script: |
             set -e
-            cd /var/www/office-speednetkhulna-com
+            cd /home/speeuvmq/office_app
 
             echo "📦 Pulling latest code..."
             git pull origin main
