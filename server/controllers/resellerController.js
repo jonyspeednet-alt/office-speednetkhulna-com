@@ -781,8 +781,11 @@ const calculateMonthlyBillBreakdown = async (
             total: cost,
             date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.fromDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.toDay))}`,
             change_type: rateSegs.length > 1 ? 'rate_change' :
-              (change.change_type === "increase" || change.change_type === "decrease"
-                ? change.change_type : "standard"),
+                          (change.change_type === "increase"
+                            ? 'প্যাকেজ বৃদ্ধি'
+                            : change.change_type === "decrease"
+                            ? 'প্যাকেজ হ্রাস'
+                            : "standard"),
           });
         }
       }
