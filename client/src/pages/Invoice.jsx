@@ -35,6 +35,7 @@ const StatusBadge = ({ type }) => {
   if (type === 'increase') return <span className="inv-badge badge-increase">{t('invoice.increase')}</span>;
   if (type === 'decrease') return <span className="inv-badge badge-decrease">{t('invoice.decrease')}</span>;
   if (type === 'standard') return <span className="inv-badge badge-standard">{t('invoice.currentPkg')}</span>;
+  if (type === 'rate_change') return <span className="inv-badge badge-rate-change">রেট পরিবর্তন</span>;
   return <span className="inv-badge badge-standard">-</span>;
 };
 

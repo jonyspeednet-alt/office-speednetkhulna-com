@@ -634,6 +634,49 @@ const calculateMonthlyBillBreakdown = async (
     const initialBw = parseAmount(workingBw[bwType], 0);
     if (initialBw === 0 && typeChanges.length === 0) continue;
 
+    // Build rate segments from reseller_rate_history for this BW type
+    // Each entry means: from effective_date onwards, use this rate
+    const rateHistory = (rateHistoryByType[bwType] || [])
+      .filter(rh => {
+        // Only entries within this month (effective_date >= monthStart)
+        return rh.effective_date >= info.monthStartStr;
+      })
+      .sort((a, b) => a.effective_date.localeCompare(b.effective_date));
+
+    // If there are rate changes within this month, split into rate segments
+    // Each rate segment: { fromDay, toDay, rate }
+    const buildRateSegments = (fromDay, toDay) => {
+      if (rateHistory.length === 0) {
+        return [{ fromDay, toDay, segRate: rate }];
+      }
+      const segs = [];
+      let cursor = fromDay;
+      for (const rh of rateHistory) {
+        const rhDate = parseYMD(rh.effective_date);
+        if (!rhDate) continue;
+        const rhDay = rhDate.getDate();
+        if (rhDay > toDay) break;
+        if (rhDay > cursor) {
+          // Segment before this rate change: use previous rate
+          const prevRate = segs.length > 0 ? segs[segs.length - 1].segRate : rate;
+          segs.push({ fromDay: cursor, toDay: rhDay - 1, segRate: prevRate });
+          cursor = rhDay;
+        } else if (rhDay <= cursor) {
+          // Rate change on or before cursor — update rate for current position
+          // (will be applied to next segment)
+        }
+      }
+      // Remaining days use the last known rate
+      const lastRate = rateHistory.filter(rh => {
+        const rhDate = parseYMD(rh.effective_date);
+        return rhDate && rhDate.getDate() <= cursor;
+      }).reduce((_, rh) => rh.rate, rate);
+      if (cursor <= toDay) {
+        segs.push({ fromDay: cursor, toDay, segRate: Number(lastRate) });
+      }
+      return segs.length > 0 ? segs : [{ fromDay, toDay, segRate: rate }];
+    };
+
     let cursorDay = info.daysInMonth;
     let tempBw = initialBw;
 
@@ -644,21 +687,23 @@ const calculateMonthlyBillBreakdown = async (
       const duration = cursorDay - changeDay + 1;
 
       if (duration > 0 && tempBw > 0) {
-        const cost = calcSegmentCost(bwType, rate, changeDay, duration, tempBw);
-        grandTotal += cost;
-        items.push({
-          desc: bwType,
-          bw: tempBw,
-          rate,
-          days: duration,
-          total: cost,
-          date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), changeDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), cursorDay))}`,
-          change_type:
-            change.change_type === "increase" ||
-              change.change_type === "decrease"
-              ? change.change_type
-              : "standard",
-        });
+        const rateSegs = buildRateSegments(changeDay, cursorDay);
+        for (const rs of rateSegs) {
+          const segDuration = rs.toDay - rs.fromDay + 1;
+          const cost = Math.round((rs.segRate / info.daysInMonth) * tempBw * segDuration * 100) / 100;
+          grandTotal += cost;
+          items.push({
+            desc: bwType,
+            bw: tempBw,
+            rate: rs.segRate,
+            days: segDuration,
+            total: cost,
+            date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.fromDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.toDay))}`,
+            change_type: rateSegs.length > 1 ? 'rate_change' :
+              (change.change_type === "increase" || change.change_type === "decrease"
+                ? change.change_type : "standard"),
+          });
+        }
       }
 
       cursorDay = changeDay - 1;
@@ -668,24 +713,21 @@ const calculateMonthlyBillBreakdown = async (
     }
 
     if (cursorDay >= startDayLimit && tempBw > 0) {
-      const duration = cursorDay - startDayLimit + 1;
-      const cost = calcSegmentCost(
-        bwType,
-        rate,
-        startDayLimit,
-        duration,
-        tempBw,
-      );
-      grandTotal += cost;
-      items.push({
-        desc: bwType,
-        bw: tempBw,
-        rate,
-        days: duration,
-        total: cost,
-        date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), startDayLimit))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), cursorDay))}`,
-        change_type: "standard",
-      });
+      const rateSegs = buildRateSegments(startDayLimit, cursorDay);
+      for (const rs of rateSegs) {
+        const segDuration = rs.toDay - rs.fromDay + 1;
+        const cost = Math.round((rs.segRate / info.daysInMonth) * tempBw * segDuration * 100) / 100;
+        grandTotal += cost;
+        items.push({
+          desc: bwType,
+          bw: tempBw,
+          rate: rs.segRate,
+          days: segDuration,
+          total: cost,
+          date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.fromDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.toDay))}`,
+          change_type: rateSegs.length > 1 ? 'rate_change' : 'standard',
+        });
+      }
     }
   }
 

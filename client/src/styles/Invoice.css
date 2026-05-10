@@ -328,3 +328,8 @@
   font-size: 12px;
   color: #475569;
 }
+
+.badge-rate-change {
+  background: #fef3c7;
+  color: #92400e;
+}
