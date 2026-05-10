@@ -150,7 +150,9 @@
   color: #0f172a;
 }
 
-.text-primary-custom { color: #4318ff !important; }
+.text-primary-custom {
+  color: #4318ff !important;
+}
 
 /* --- Table --- */
 .inv-table {
@@ -215,9 +217,20 @@
   display: inline-block;
 }
 
-.badge-increase { background: #dcfce7; color: #166534; }
-.badge-decrease { background: #fee2e2; color: #991b1b; }
-.badge-standard { background: #e0f2fe; color: #075985; }
+.badge-increase {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-decrease {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-standard {
+  background: #e0f2fe;
+  color: #075985;
+}
 
 /* --- Summary --- */
 .inv-summary td {
@@ -256,9 +269,19 @@
 
 /* --- Print --- */
 @media print {
-  body { background: #fff !important; }
-  .no-print, .btn, .sidebar, nav,
-  .layout-sidebar, .sidebar-overlay, .mobile-toggle { display: none !important; }
+  body {
+    background: #fff !important;
+  }
+
+  .no-print,
+  .btn,
+  .sidebar,
+  nav,
+  .layout-sidebar,
+  .sidebar-overlay,
+  .mobile-toggle {
+    display: none !important;
+  }
 
   .inv-container {
     box-shadow: none !important;
@@ -269,7 +292,9 @@
 
   .inv-header,
   .inv-body,
-  .inv-footer { padding: 20px 30px !important; }
+  .inv-footer {
+    padding: 20px 30px !important;
+  }
 
   .inv-table th {
     background-color: #f1f5f9 !important;
@@ -284,5 +309,286 @@
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
+  }
+}
+
+/* ============================================================
+   Bill Breakdown Cards — new design
+   ============================================================ */
+
+.inv-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.inv-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.inv-bw-card {
+  background: var(--card-bg, #f8fafc);
+  border: 1.5px solid color-mix(in srgb, var(--card-dot, #94a3b8) 25%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+
+.inv-bw-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
+}
+
+.inv-bw-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--card-dot, #94a3b8) 20%, transparent);
+  background: color-mix(in srgb, var(--card-bg, #f8fafc) 60%, white);
+}
+
+.inv-bw-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--card-dot, #94a3b8);
+  flex-shrink: 0;
+}
+
+.inv-bw-label {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--card-text, #334155);
+  flex: 1;
+}
+
+.inv-bw-subtotal {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--card-text, #334155);
+}
+
+.inv-bw-row {
+  padding: 10px 14px;
+}
+
+.inv-bw-row+.inv-bw-row {
+  border-top: 1px dashed color-mix(in srgb, var(--card-dot, #94a3b8) 25%, transparent);
+}
+
+.inv-bw-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.inv-bw-daterange {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.inv-bw-row-calc {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.inv-bw-chip {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.inv-bw-op {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.inv-bw-total {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--card-text, #334155);
+  margin-left: 2px;
+}
+
+/* OTC row */
+.inv-otc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fefce8;
+  border: 1.5px solid #fde68a;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+/* No breakdown fallback */
+.inv-no-breakdown {
+  background: #f8fafc;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 14px;
+}
+
+/* ── Summary Card ── */
+.inv-summary-card {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.inv-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 9px 16px;
+  font-size: 13.5px;
+  color: #475569;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.inv-summary-row:last-child {
+  border-bottom: none;
+}
+
+.inv-summary-row.subtotal {
+  background: #f1f5f9;
+  border-top: 1.5px solid #cbd5e1;
+  border-bottom: 1.5px solid #cbd5e1;
+}
+
+.inv-summary-row.total {
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.inv-summary-row.total.due {
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.inv-summary-row.total.paid {
+  background: #f0fdf4;
+  color: #065f46;
+}
+
+/* ── Rate Change Banner ── */
+.inv-rate-change-banner {
+  background: #fffbeb;
+  border: 1.5px solid #fcd34d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+.inv-rate-change-title {
+  font-weight: 700;
+  color: #92400e;
+  margin-bottom: 8px;
+}
+
+.inv-rate-change-row {
+  padding: 6px 0;
+  border-top: 1px dashed #fde68a;
+}
+
+.inv-rate-change-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: #78350f;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.inv-rate-change-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.inv-rate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+}
+
+.inv-rate-chip.up {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+.inv-rate-chip.down {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.inv-rate-change-note {
+  font-size: 11px;
+  color: #92400e;
+  font-style: italic;
+}
+
+/* ── Print overrides ── */
+@media print {
+  .inv-breakdown-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .inv-bw-card {
+    break-inside: avoid;
+  }
+
+  .inv-summary-card {
+    break-inside: avoid;
+  }
+
+  .inv-rate-change-banner {
+    display: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .inv-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inv-bw-row-calc {
+    gap: 3px;
+  }
+
+  .inv-bw-chip {
+    font-size: 11px;
+    padding: 2px 6px;
   }
 }
