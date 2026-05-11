@@ -127,11 +127,21 @@ const updateEmployee = async (req, res) => {
     let profile_pic = currentUserData.profile_pic;
     let nid_pic = currentUserData.nid_pic;
     if (req.files?.profile_pic) {
-      if (profile_pic && profile_pic !== 'default.png') { const oldPath = path.join('uploads', profile_pic); if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch (err) { console.error(err); } } }
+      if (profile_pic && profile_pic !== 'default.png') { 
+        const oldPath = path.join(__dirname, '../../uploads', profile_pic); 
+        if (fs.existsSync(oldPath)) { 
+          try { fs.unlinkSync(oldPath); } catch (err) { console.error(err); } 
+        } 
+      }
       profile_pic = req.files.profile_pic[0].filename;
     }
     if (req.files?.nid_pic) {
-      if (nid_pic) { const oldPath = path.join('uploads', nid_pic); if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch (err) { console.error(err); } } }
+      if (nid_pic) { 
+        const oldPath = path.join(__dirname, '../../uploads', nid_pic); 
+        if (fs.existsSync(oldPath)) { 
+          try { fs.unlinkSync(oldPath); } catch (err) { console.error(err); } 
+        } 
+      }
       nid_pic = req.files.nid_pic[0].filename;
     }
     const newPassword = (password && password.trim() !== '') ? password : currentUserData.password;
