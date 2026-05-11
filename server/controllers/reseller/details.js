@@ -4,9 +4,10 @@ const {
   hasAnyPermission,
   isAdminRole,
   getDhakaMonthYm,
-  previousMonthYm
+  previousMonthYm,
+  normalizedPartnerTypeSql
 } = require("./utils");
-const { initialize, joiningDateExpr, detectChannelPartnerColumns, hasChannelPartnerColumns, normalizedPartnerTypeSql, hasResellerPartnerTypeColumn, hasResellerOtcAppliedMonthColumn } = require("./dbSetup");
+const { initialize, joiningDateExpr, detectChannelPartnerColumns, hasChannelPartnerColumns, hasResellerPartnerTypeColumn, hasResellerOtcAppliedMonthColumn } = require("./dbSetup");
 const { calculateMonthlyBillBreakdown } = require("./service");
 const { resolvePermission } = require("../../utilities/permissionRegistry");
 

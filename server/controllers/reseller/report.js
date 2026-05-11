@@ -1,10 +1,14 @@
 const pool = require("../../utilities/db");
-const { getDhakaDate, getDhakaMonthYm, parseAmount, getMonthYear, getStartOfMonth, getEndOfMonth } = require("./utils");
+const { getMonthYear, getStartOfMonth, getEndOfMonth, parseAmount } = require("./utils");
 
+/**
+ * Get detailed monthly report for a reseller
+ * This report shows the ledger of transactions (payments, adjustments, bill finalization)
+ */
 const getDetailedMonthlyReport = async (req, res) => {
     try {
         const { resellerId } = req.params;
-        const { month } = req.query;
+        const { month } = req.query; // YYYY-MM
 
         if (!month) {
             return res.status(400).json({ message: "Month query parameter (YYYY-MM) is required" });
@@ -14,42 +18,63 @@ const getDetailedMonthlyReport = async (req, res) => {
         const startDate = getStartOfMonth(y, m).toISOString();
         const endDate = getEndOfMonth(y, m).toISOString();
 
+        // 1. Fetch transactions from billing_logs
         const billingLogs = await pool.query(
-            'SELECT * FROM reseller_billing_log WHERE reseller_id = $1 AND created_at >= $2 AND created_at <= $3 ORDER BY created_at ASC, id ASC',
+            `SELECT * FROM billing_logs 
+             WHERE reseller_id = $1 AND effective_date >= $2 AND effective_date <= $3 
+             ORDER BY effective_date ASC, created_at ASC`,
             [resellerId, startDate, endDate]
         );
 
-        const previousDueResult = await pool.query(
-            `SELECT
-                (SELECT COALESCE(SUM(amount), 0) FROM reseller_billing_log WHERE reseller_id = $1 AND type = 'debit' AND created_at < $2) -
-                (SELECT COALESCE(SUM(amount), 0) FROM reseller_billing_log WHERE reseller_id = $1 AND type = 'credit' AND created_at < $2) AS net_due`,
+        // 2. Fetch monthly bill if finalized in this month
+        // In this system, bill finalization is a separate event. 
+        // We might want to show it in the ledger if it has a financial impact.
+        
+        // 3. Calculate Previous Due (Balance before startDate)
+        // Sum of all billed amounts - Sum of all payments/discounts
+        const previousSummary = await pool.query(
+            `SELECT 
+                (SELECT COALESCE(SUM(amount + adjustment), 0) FROM monthly_bills WHERE reseller_id = $1 AND bill_month < $2::date) AS total_billed,
+                (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND effective_date < $2::date AND log_type IN ('payment', 'discount')) AS total_paid`,
             [resellerId, startDate]
         );
-        const previousDue = parseAmount(previousDueResult.rows[0].net_due);
+        
+        const totalBilled = parseAmount(previousSummary.rows[0].total_billed, 0);
+        const totalPaid = parseAmount(previousSummary.rows[0].total_paid, 0);
+        const previousDue = totalBilled - totalPaid;
 
         let runningBalance = previousDue;
         const report = billingLogs.rows.map(log => {
-            const credit = log.type === 'credit' ? parseAmount(log.amount) : 0;
-            const debit = log.type === 'debit' ? parseAmount(log.amount) : 0;
-            runningBalance += debit - credit;
+            const amount = parseAmount(log.transaction_amount, 0);
+            
+            // Logic: payments/discounts reduce balance (credit), anything else increases?
+            // Actually, in billing_logs, 'payment' and 'discount' are reductions.
+            let credit = 0;
+            let debit = 0;
+            
+            if (log.log_type === 'payment' || log.log_type === 'discount') {
+                credit = amount;
+                runningBalance -= amount;
+            } else {
+                debit = amount;
+                runningBalance += amount;
+            }
 
             return {
-                date: log.created_at,
-                description: log.description,
+                date: log.effective_date,
+                description: log.change_desc,
                 debit,
                 credit,
                 balance: runningBalance,
-                category: log.category,
-                actor: log.actor_name,
+                category: log.log_type,
                 log_id: log.id
             };
         });
 
-        const summary = {
-            previous_due: previousDue
-        };
-
-        res.json({ summary, report });
+        res.json({ 
+            summary: { previous_due: previousDue, current_balance: runningBalance }, 
+            report 
+        });
 
     } catch (error) {
         console.error("Error fetching detailed monthly report:", error);

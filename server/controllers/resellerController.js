@@ -5,7 +5,7 @@ const { getResellerProfileDetails } = require("./reseller/details");
 const { updateReseller } = require("./reseller/update");
 const { getStatusNoc } = require("./reseller/status");
 const { createBandwidthRequest, listBandwidthRequests, reviewBandwidthRequest, applyApprovedRequest } = require("./reseller/bandwidth");
-const { getBillingLogs, addBillingLog, addDiscount, getMonthlySummary, updateMonthlySummaryPayDate, finalizeResellerBill } = require("./reseller/billing");
+const { getBillingLogs, addBillingLog, addDiscount, getMonthlySummary, updateMonthlySummaryPayDate, finalizeResellerBill, getFinancialAuditLogs } = require("./reseller/billing");
 const { getInvoice, getInvoiceByBillId, sendInvoiceEmailByReseller, sendInvoiceEmailByBillId } = require("./reseller/invoice");
 const { getPartnerSheetList, ingestPartnerSheetWebhook } = require("./reseller/sheets");
 const { syncProjectedBillsForCurrentMonth, internalAutoFinalize, internalAutoFinalizeStatus } = require("./reseller/automation");
@@ -54,6 +54,61 @@ const runFinalize = async (req, res) => {
     }
 };
 
+// Alias: route POST /invoice/:resellerId/finalize -> runFinalize
+const finalizeInvoice = runFinalize;
+
+// Batch: generate (finalize) bills for all active resellers for a given month
+const generateMonthlyBills = async (req, res) => {
+    try {
+        await initialize();
+        const monthYm = String(req.body.month || getDhakaMonthYm()).slice(0, 7);
+        const actor = getActor(req);
+        const reqMeta = getReqMeta(req);
+
+        const resellers = await pool.query(
+            `SELECT id FROM resellers WHERE status = 'active'`
+        );
+
+        const results = [];
+        for (const r of resellers.rows) {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const result = await finalizeResellerBill(client, {
+                    resellerId: r.id,
+                    monthYm,
+                    adjustment: 0,
+                    adjustmentNote: null,
+                    actor,
+                    reqMeta,
+                    source: 'batch',
+                    requestPayload: { ...req.body },
+                });
+                await client.query('COMMIT');
+                results.push({ resellerId: r.id, success: true, message: result.message });
+            } catch (error) {
+                await client.query('ROLLBACK');
+                results.push({ resellerId: r.id, success: false, message: error.message });
+            } finally {
+                client.release();
+            }
+        }
+
+        const successCount = results.filter(r => r.success).length;
+        res.json({
+            month: monthYm,
+            total: results.length,
+            success: successCount,
+            failed: results.length - successCount,
+            results,
+        });
+    } catch (error) {
+        console.error('generateMonthlyBills error:', error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
 module.exports = {
     listResellers,
     createReseller,
@@ -70,7 +125,10 @@ module.exports = {
     addDiscount,
     getMonthlySummary,
     updateMonthlySummaryPayDate,
+    getFinancialAuditLogs,
     runFinalize,
+    finalizeInvoice,
+    generateMonthlyBills,
     getInvoice,
     getInvoiceByBillId,
     sendInvoiceEmailByReseller,

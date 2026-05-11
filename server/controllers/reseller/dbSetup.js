@@ -215,9 +215,10 @@ const initialize = async () => {
       try {
         await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS channel_user_count INTEGER DEFAULT 0`);
         await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS profit_share_percentage NUMERIC(5,2) DEFAULT 0`);
+        await pool.query(`ALTER TABLE resellers ADD COLUMN IF NOT EXISTS auto_finalize_bill BOOLEAN NOT NULL DEFAULT FALSE`);
         await detectChannelPartnerColumns();
       } catch (err) {
-        console.warn("resellers channel_partner columns init warning:", err.message);
+        console.warn("resellers channel_partner/auto_finalize columns init warning:", err.message);
       }
 
       try {

@@ -257,6 +257,30 @@ const monthInfo = (monthStr) => {
   };
 };
 
+const getDhakaDate = (date = new Date()) => {
+  const local = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Dhaka" }));
+  const d = new Date(local);
+  // Add simple subtract helper for month
+  d.subtract = (amount, unit) => {
+    if (unit === "month") {
+      d.setMonth(d.getMonth() - amount);
+    }
+    return d;
+  };
+  return d;
+};
+
+const getMonthYear = (ym) => {
+  const parts = String(ym).split("-");
+  return {
+    y: parseInt(parts[0], 10),
+    m: parseInt(parts[1], 10)
+  };
+};
+
+const getStartOfMonth = (y, m) => new Date(y, m - 1, 1, 0, 0, 0, 0);
+const getEndOfMonth = (y, m) => new Date(y, m, 0, 23, 59, 59, 999);
+
 module.exports = {
   normalizeRole,
   normalizePartnerType,
@@ -273,6 +297,10 @@ module.exports = {
   parseWholeNumber,
   parseBillDetailsSnapshot,
   getDhakaMonthYm,
+  getDhakaDate,
+  getMonthYear,
+  getStartOfMonth,
+  getEndOfMonth,
   previousMonthYm,
   nextMonthYm,
   monthStartDateFromYm,

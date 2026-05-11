@@ -226,8 +226,8 @@ const applyApprovedRequest = async (req, res) => {
         );
 
         await client.query(
-            `INSERT INTO billing_logs (reseller_id, request_id, change_desc, transaction_amount, effective_date, created_at)
-       VALUES ($1, $2, $3, 0, NOW(), NOW())`,
+            `INSERT INTO billing_logs (reseller_id, request_id, change_desc, transaction_amount, effective_date, created_at, log_type)
+       VALUES ($1, $2, $3, 0, NOW(), NOW(), 'bandwidth_change')`,
             [bwReq.reseller_id, bwReq.id, `Applied ${bwReq.change_type || "increase"} ${bwReq.amount} on ${bwReq.bw_type || "iig_bw"}`],
         );
 
