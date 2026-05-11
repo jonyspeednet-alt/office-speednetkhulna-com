@@ -28,7 +28,8 @@
     --side-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
     --side-glass: rgba(17, 24, 39, 0.98);
     --side-hover: rgba(255, 255, 255, 0.05);
-    --side-brand-filter: brightness(0) invert(1);
+    --side-brand-filter: none;
+    --side-brand-glow: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.05));
     --side-avatar-bg: rgba(255, 255, 255, 0.08);
 }
 
@@ -73,20 +74,26 @@
 }
 
 .sidebar-brand {
-    padding: 22px 18px 16px;
+    padding: 24px 20px 18px;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     border-bottom: 1px solid var(--side-border);
-    min-height: 70px;
+    min-height: 85px;
     flex-shrink: 0;
 }
 .brand-logo {
-    height: 36px;
+    height: 50px;
+    width: auto;
     object-fit: contain;
-    filter: var(--side-brand-filter);
+    filter: var(--side-brand-glow);
     flex-shrink: 0;
-    transition: filter 0.3s;
+    transition: all 0.3s ease;
+}
+
+.sidebar.collapsed .brand-logo {
+    height: 38px;
+    margin: 0 auto;
 }
 .role-badge {
     font-size: 11px;

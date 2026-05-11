@@ -109,10 +109,10 @@ const ApprovalLetter = () => {
           `}
         </style>
 
-        <BrandLogo alt="watermark" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '350px', opacity: '0.05', zIndex: 0, pointerEvents: 'none' }} />
+        <BrandLogo alt="watermark" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '450px', opacity: '0.05', zIndex: 0, pointerEvents: 'none' }} />
         
         <div className="header" style={{ textAlign: 'center', borderBottom: '2px solid #4318ff', paddingBottom: '10px', marginBottom: '20px', position: 'relative', zIndex: 1 }}>
-          <BrandLogo alt="Logo" style={{ height: '60px', width: 'auto', marginBottom: '5px', objectFit: 'contain' }} />
+          <BrandLogo alt="Logo" style={{ height: '100px', width: 'auto', marginBottom: '10px', objectFit: 'contain' }} />
           <h3 style={{ margin: 0, color: '#333', fontSize: '24px' }}>স্পিড নেট খুলনা</h3>
           <p style={{ margin: '2px 0', color: '#666', fontSize: '14px' }}>অফিসিয়াল ছুটির অনুমতি পত্র</p>
         </div>

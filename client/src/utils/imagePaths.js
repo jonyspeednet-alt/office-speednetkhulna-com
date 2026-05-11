@@ -18,8 +18,8 @@ const toInitials = (name) => {
 
 const svgDataUri = (svg) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 
-export const BRAND_LOGO_URL = 'https://speednetkhulna.com/assets/img/logo-b.png?v=20260226';
-export const BRAND_LOGO_LOCAL_URL = '/logo-b.png?v=20260226';
+export const BRAND_LOGO_URL = '/speednet_logo.png?v=20260511';
+export const BRAND_LOGO_LOCAL_URL = '/speednet_logo.png?v=20260511';
 export const BRAND_LOGO_FALLBACK_URL = svgDataUri(
   `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="80" viewBox="0 0 260 80" role="img" aria-label="Logo unavailable"><rect width="260" height="80" rx="10" fill="#f3f4f6"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" fill="#6b7280">Logo unavailable</text></svg>`
 );

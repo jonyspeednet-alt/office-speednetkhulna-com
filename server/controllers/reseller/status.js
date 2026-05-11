@@ -1,23 +1,36 @@
 const pool = require("../../utilities/db");
 
+/**
+ * Get Reseller Status for NOC view
+ * Returns bandwidth data for active/inactive resellers
+ */
 const getStatusNoc = async (req, res) => {
     try {
+        const { status = 'active' } = req.query;
+        
         const result = await pool.query(`
             SELECT
-                r.id AS reseller_id,
-                r.name AS reseller_name,
-                COALESCE(SUM(p.monthly_mrc), 0) AS total_mrc,
-                COUNT(p.id) AS total_packages,
-                r.status
+                id,
+                reseller_name AS name,
+                company_name,
+                contact_no AS phone,
+                iig_bw,
+                bdix_bw,
+                ggc_bw,
+                fna_bw,
+                cdn_bw,
+                bcdn_bw,
+                nttn_capacity,
+                pop_location,
+                status
             FROM
-                resellers r
-            LEFT JOIN
-                packages p ON r.id = p.reseller_id AND p.status = 'active'
-            GROUP BY
-                r.id, r.name, r.status
+                resellers
+            WHERE
+                status = $1
             ORDER BY
-                total_mrc DESC
-        `);
+                iig_bw DESC, reseller_name ASC
+        `, [status]);
+
         res.json(result.rows);
     } catch (error) {
         console.error('Error fetching NOC status:', error);

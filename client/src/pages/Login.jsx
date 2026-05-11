@@ -6,20 +6,6 @@ import BrandLogo from "../components/BrandLogo";
 import { t } from "../i18n";
 import "../styles/Login.css";
 
-const EyeIcon = (props) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-    <circle cx="12" cy="12" r="3"></circle>
-  </svg>
-);
-
-const EyeOffIcon = (props) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-    <line x1="1" y1="1" x2="23" y2="23"></line>
-  </svg>
-);
-
 const UserIcon = (props) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -27,11 +13,17 @@ const UserIcon = (props) => (
     </svg>
 );
 
+const LockIcon = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+    </svg>
+);
+
 const Login = () => {
     const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
     const [rememberMe, setRememberMe] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
@@ -80,18 +72,19 @@ const Login = () => {
 
     return (
         <div className="login-page">
-            <div className="login-container">
-                <div className="login-branding-panel">
-                    <div className="branding-content">
-                        <BrandLogo className="logo" alt="Speed Net Khulna" />
-                        <h1 className="branding-title">{t("login.brandingTitle")}</h1>
-                        <p className="branding-subtitle">{t("login.brandingSubtitle")}</p>
+            <div className="login-centered-container">
+                <div className="login-card-wrapper animate-fade-in-up">
+                    <div className="login-branding-section">
+                        <div className="logo-container">
+                            <BrandLogo className="logo" alt="Speed Net Khulna" />
+                        </div>
                     </div>
-                </div>
-                <div className="login-form-panel">
-                    <div className="login-card text-center animate-fade-in-up">
-                        <h4 className="fw-bold text-dark">{t("login.welcomeBack")}</h4>
-                        <p className="text-muted small mb-4">{t("login.subtitle")}</p>
+                    
+                    <div className="login-form-section">
+                        <div className="form-header">
+                            <h4 className="fw-bold text-dark">{t("login.welcomeBack")}</h4>
+                            <p className="text-muted small">{t("login.subtitle")}</p>
+                        </div>
 
                         {error && (
                             <div className="alert alert-danger py-2 small rounded-3 text-center mb-3">
@@ -99,7 +92,7 @@ const Login = () => {
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit} className="text-start">
+                        <form onSubmit={handleSubmit}>
                             <div className="mb-3">
                                 <label htmlFor="identifier" className="form-label small fw-bold">
                                     {t("login.identifierLabel")}
@@ -122,21 +115,16 @@ const Login = () => {
                                     {t("login.passwordLabel")}
                                 </label>
                                 <div className="input-wrapper">
+                                    <LockIcon className="input-icon" />
                                     <input
-                                        type={showPassword ? "text" : "password"}
+                                        type="password"
                                         id="password"
-                                        className="form-control"
+                                        className="form-control with-icon"
                                         placeholder={t("login.passwordPlaceholder")}
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                     />
-                                    <span
-                                        className="password-toggle-icon"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                    >
-                                        {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                                    </span>
                                 </div>
                             </div>
                             <div className="d-flex justify-content-between align-items-center mb-4">
@@ -148,11 +136,11 @@ const Login = () => {
                                         checked={rememberMe}
                                         onChange={(e) => setRememberMe(e.target.checked)}
                                     />
-                                    <label className="form-check-label" htmlFor="rememberMe">
+                                    <label className="form-check-label small" htmlFor="rememberMe">
                                         {t("login.rememberMe")}
                                     </label>
                                 </div>
-                                <Link to="/forgot-password" className="forgot-password-link">
+                                <Link to="/forgot-password" disabled className="forgot-password-link small">
                                     {t("login.forgotPassword")}
                                 </Link>
                             </div>
@@ -164,7 +152,7 @@ const Login = () => {
                                 {loading ? t("login.loggingIn") : t("login.loginNow")}
                             </button>
                         </form>
-                        <p className="mt-4 small text-muted">&copy; 2026 Speed Net Khulna</p>
+                        <p className="mt-4 small text-muted text-center">&copy; 2026 Speed Net Khulna</p>
                     </div>
                 </div>
             </div>

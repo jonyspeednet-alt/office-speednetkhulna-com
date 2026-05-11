@@ -10,6 +10,8 @@ const bn = {
   login: {
     welcomeBack: "আবারও স্বাগতম",
     subtitle: "অফিস পোর্টালে লগইন করুন",
+    brandingTitle: "Beyond your imagination",
+    brandingSubtitle: "Divisional Internet Service Provider",
     identifierLabel: "ইমেইল বা কর্মী আইডি",
     identifierPlaceholder: "আইডি বা ইমেইল",
     passwordLabel: "পাসওয়ার্ড",
