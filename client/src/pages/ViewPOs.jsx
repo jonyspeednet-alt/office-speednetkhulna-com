@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 
 const ViewPOs = () => {
-  const { t } = useTranslation();
   const [pos, setPos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +38,7 @@ const ViewPOs = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <i className="fa-solid fa-list-check text-indigo-500"></i>
-            {t('procurement.viewPOs')}
+            Purchase Orders
           </h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Manage and track all purchase orders</p>
         </div>
@@ -48,7 +46,7 @@ const ViewPOs = () => {
           to="/create-po"
           className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-md"
         >
-          <i className="fa-solid fa-plus"></i> {t('procurement.createPO')}
+          <i className="fa-solid fa-plus"></i> Create PO
         </Link>
       </div>
 
@@ -57,11 +55,11 @@ const ViewPOs = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{t('procurement.poNumber')}</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{t('procurement.vendor')}</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{t('procurement.orderDate')}</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{t('procurement.totalAmount')}</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">{t('procurement.status')}</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">PO Number</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Vendor</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Order Date</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Total Amount</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Status</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-700 dark:text-slate-300 text-right">Actions</th>
               </tr>
             </thead>
@@ -89,7 +87,7 @@ const ViewPOs = () => {
                     <td className="px-6 py-4 font-semibold text-slate-800 dark:text-white">৳{Number(po.total_amount).toLocaleString()}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(po.status)}`}>
-                        {t(`procurement.${po.status}`)}
+                        {po.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">

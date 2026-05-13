@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
 const CreatePO = () => {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [vendors, setVendors] = useState([]);
@@ -64,10 +62,10 @@ const CreatePO = () => {
     setLoading(true);
     try {
       await axios.post('/api/procurement', formData);
-      toast.success(t('procurement.poCreated'));
+      toast.success('Purchase order created successfully');
       navigate('/view-pos');
     } catch (err) {
-      toast.error(err.response?.data?.message || t('procurement.poFailed'));
+      toast.error(err.response?.data?.message || 'Failed to create purchase order');
     } finally {
       setLoading(false);
     }
@@ -77,13 +75,13 @@ const CreatePO = () => {
     <div className="p-6 max-w-4xl mx-auto bg-white rounded-xl shadow-lg dark:bg-slate-800 transition-all">
       <h1 className="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-2">
         <i className="fa-solid fa-file-invoice text-indigo-500"></i>
-        {t('procurement.createPO')}
+        Create Purchase Order
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t('procurement.vendor')}</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vendor</label>
             <select
               name="vendor_id"
               value={formData.vendor_id}
@@ -98,7 +96,7 @@ const CreatePO = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t('procurement.orderDate')}</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Order Date</label>
             <input
               type="date"
               name="order_date"
@@ -112,13 +110,13 @@ const CreatePO = () => {
 
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{t('procurement.itemName')}</h2>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Items</h2>
             <button
               type="button"
               onClick={addItem}
               className="px-3 py-1 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors flex items-center gap-1 text-sm"
             >
-              <i className="fa-solid fa-plus"></i> {t('procurement.addItem')}
+              <i className="fa-solid fa-plus"></i> Add Item
             </button>
           </div>
 
@@ -138,7 +136,7 @@ const CreatePO = () => {
                     name="item_name"
                     value={item.item_name}
                     onChange={(e) => handleItemChange(index, e)}
-                    placeholder={t('procurement.itemName')}
+                    placeholder="Item Name"
                     className="w-full px-3 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                     required
                   />
@@ -149,7 +147,7 @@ const CreatePO = () => {
                     name="quantity"
                     value={item.quantity}
                     onChange={(e) => handleItemChange(index, e)}
-                    placeholder={t('procurement.quantity')}
+                    placeholder="Quantity"
                     min="1"
                     className="w-full px-3 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                     required
@@ -161,7 +159,7 @@ const CreatePO = () => {
                     name="unit_price"
                     value={item.unit_price}
                     onChange={(e) => handleItemChange(index, e)}
-                    placeholder={t('procurement.unitPrice')}
+                    placeholder="Unit Price"
                     min="0"
                     step="0.01"
                     className="w-full px-3 py-2 border rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white"
@@ -175,7 +173,7 @@ const CreatePO = () => {
 
         <div className="border-t pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="text-xl font-bold text-slate-800 dark:text-white">
-            {t('procurement.totalAmount')}: <span className="text-indigo-600 dark:text-indigo-400">৳{calculateTotal().toLocaleString()}</span>
+            Total Amount: <span className="text-indigo-600 dark:text-indigo-400">৳{calculateTotal().toLocaleString()}</span>
           </div>
           <button
             type="submit"
@@ -183,7 +181,7 @@ const CreatePO = () => {
             className="w-full md:w-auto px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
           >
             {loading ? <i className="fa-solid fa-spinner fa-spin mr-2"></i> : null}
-            {t('procurement.submitPO')}
+            Submit Purchase Order
           </button>
         </div>
       </form>
