@@ -257,14 +257,148 @@ const getFinancialAuditLogs = async (req, res) => {
 };
 
 /**
- * Placeholder for monthly summary (can be implemented later if needed)
+ * Get monthly summary for all resellers
  */
 const getMonthlySummary = async (req, res) => {
-    res.status(501).json({ message: "Not implemented. Use details API for summary." });
+    try {
+        const { month, partner_type } = req.query;
+        const targetMonthYm = month ? String(month).slice(0, 7) : getDhakaMonthYm();
+        const targetMonthDate = `${targetMonthYm}-01`;
+        const info = monthInfo(targetMonthYm);
+
+        // 1. Fetch Resellers
+        let resellerQuery = `
+            SELECT id, user_id, COALESCE(reseller_name, company_name) AS name, company_name, contact_no AS contact,
+                   COALESCE(status, 'active') AS status, partner_type, next_pay_date,
+                   COALESCE(previous_month_due, 0)::numeric AS previous_month_due,
+                   COALESCE(current_projected_bill, 0)::numeric AS current_projected_bill,
+                   created_at
+            FROM resellers
+            WHERE status = 'active'
+        `;
+        const resellerParams = [];
+        if (partner_type) {
+            resellerParams.push(partner_type);
+            resellerQuery += ` AND partner_type = $1`;
+        }
+        resellerQuery += ` ORDER BY name ASC`;
+        const resellersResult = await pool.query(resellerQuery, resellerParams);
+        const resellers = resellersResult.rows;
+
+        // 2. Fetch Finalized Bills for the month
+        const billsResult = await pool.query(
+            `SELECT reseller_id, amount, adjustment, previous_due, created_at
+             FROM monthly_bills
+             WHERE bill_month = $1::date`,
+            [targetMonthDate]
+        );
+        const billsMap = billsResult.rows.reduce((acc, b) => {
+            acc[b.reseller_id] = b;
+            return acc;
+        }, {});
+
+        // 3. Fetch Payments and Discounts for the month
+        const logsResult = await pool.query(
+            `SELECT reseller_id, 
+                    SUM(CASE WHEN log_type = 'payment' THEN transaction_amount ELSE 0 END)::numeric AS paid,
+                    SUM(CASE WHEN log_type = 'discount' THEN transaction_amount ELSE 0 END)::numeric AS discount
+             FROM billing_logs
+             WHERE TO_CHAR(COALESCE(effective_date, created_at), 'YYYY-MM') = $1
+             GROUP BY reseller_id`,
+            [targetMonthYm]
+        );
+        const logsMap = logsResult.rows.reduce((acc, l) => {
+            acc[l.reseller_id] = l;
+            return acc;
+        }, {});
+
+        // 4. Process each reseller
+        const { calculateMonthlyBillBreakdown } = require("./service");
+        const rows = [];
+        const totals = { projected: 0, paid: 0, discount: 0, due: 0 };
+
+        for (const r of resellers) {
+            const bill = billsMap[r.id];
+            const logs = logsMap[r.id] || { paid: 0, discount: 0 };
+
+            let projected = 0;
+            let prevDue = 0;
+
+            if (bill) {
+                projected = Number(bill.amount || 0) + Number(bill.adjustment || 0);
+                prevDue = Number(bill.previous_due || 0);
+            } else {
+                // If not finalized, we need to calculate or use cache
+                // For the summary, we'll try to calculate it if it's the current month
+                if (targetMonthYm === getDhakaMonthYm()) {
+                    try {
+                        const breakdown = await calculateMonthlyBillBreakdown(r.id, targetMonthYm, null);
+                        projected = Number(breakdown.total || 0);
+                    } catch (e) {
+                        projected = Number(r.current_projected_bill || 0);
+                    }
+                } else {
+                    projected = Number(r.current_projected_bill || 0);
+                }
+                prevDue = Number(r.previous_month_due || 0);
+            }
+
+            const paid = Number(logs.paid || 0);
+            const discount = Number(logs.discount || 0);
+            const totalBill = prevDue + projected;
+            const newDue = totalBill - paid - discount;
+
+            const row = {
+                id: r.id,
+                name: r.name,
+                company: r.company_name,
+                contact: r.contact,
+                projected: projected,
+                prev_due: prevDue,
+                total_bill: totalBill,
+                paid: paid,
+                discount: discount,
+                new_due: newDue,
+                next_pay_date: r.next_pay_date,
+            };
+
+            rows.push(row);
+
+            totals.projected += projected;
+            totals.paid += paid;
+            totals.discount += discount;
+            totals.due += newDue;
+        }
+
+        res.json({
+            month: targetMonthYm,
+            rows,
+            totals
+        });
+    } catch (error) {
+        console.error("getMonthlySummary error:", error);
+        res.status(500).json({ message: error.message || "Internal Server Error" });
+    }
 };
 
+/**
+ * Update next pay date from monthly summary
+ */
 const updateMonthlySummaryPayDate = async (req, res) => {
-    res.status(501).json({ message: "Not implemented." });
+    try {
+        const { reseller_id, date } = req.body;
+        if (!reseller_id) return res.status(400).json({ message: "reseller_id is required" });
+
+        await pool.query(
+            `UPDATE resellers SET next_pay_date = $1, updated_at = NOW() WHERE id = $2`,
+            [date || null, reseller_id]
+        );
+
+        res.json({ success: true, message: "Pay date updated" });
+    } catch (error) {
+        console.error("updateMonthlySummaryPayDate error:", error);
+        res.status(500).json({ message: error.message || "Internal Server Error" });
+    }
 };
 
 module.exports = {

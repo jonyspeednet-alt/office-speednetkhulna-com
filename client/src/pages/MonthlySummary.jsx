@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import { getMonthlySummary, updateMonthlySummaryPayDate } from '../services/resellerService';
@@ -186,44 +186,81 @@ const MonthlySummary = () => {
     <div className="monthly-summary-page">
       <div ref={snapshotRef}>
         <div className="summary-header no-print">
-          <div>
+          <div className="header-brand">
             <h3 className="summary-title">
-              <i className="fas fa-chart-pie me-2" />
+              <i className="fas fa-chart-line title-icon" />
               মাসিক বিলিং সামারি
             </h3>
-            <p className="summary-subtitle">{PARTNER_TABS[activePartnerType]} এর আলাদা বিল, বকেয়া, জমা ও সমন্বয়</p>
+            <p className="summary-subtitle">
+              <span className="partner-badge">{PARTNER_TABS[activePartnerType]}</span>
+              বিল, বকেয়া ও সমন্বয় রিপোর্ট
+            </p>
           </div>
 
           <div className="summary-controls">
+            <div className="custom-month-selector">
+              <button 
+                type="button" 
+                className="month-nav-btn"
+                onClick={() => {
+                  const d = new Date(month + '-01');
+                  d.setMonth(d.getMonth() - 1);
+                  setMonth(d.toISOString().slice(0, 7));
+                }}
+              >
+                <i className="fas fa-chevron-left" />
+              </button>
+              
+              <div className="month-display">
+                <i className="far fa-calendar-alt me-2 text-primary" />
+                <span className="month-text">
+                  {new Date(month + '-01').toLocaleString('bn-BD', { month: 'long', year: 'numeric' })}
+                </span>
+                <input
+                  type="month"
+                  className="month-hidden-input"
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                />
+              </div>
+
+              <button 
+                type="button" 
+                className="month-nav-btn"
+                onClick={() => {
+                  const d = new Date(month + '-01');
+                  d.setMonth(d.getMonth() + 1);
+                  setMonth(d.toISOString().slice(0, 7));
+                }}
+              >
+                <i className="fas fa-chevron-right" />
+              </button>
+            </div>
+
             <div className="summary-search">
               <i className="fas fa-search" />
               <input
                 type="text"
-                className="form-control form-control-sm"
+                className="form-control"
                 placeholder="রিসেলার খুঁজুন..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
 
-            <input
-              type="month"
-              className="form-control form-control-sm summary-month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-            />
+            <div className="action-buttons">
+              <button type="button" onClick={exportToExcel} className="btn btn-export">
+                <i className="fas fa-file-excel me-1" />Export
+              </button>
 
-            <button type="button" onClick={exportToExcel} className="btn btn-success btn-sm">
-              <i className="fas fa-file-excel me-1" />Export
-            </button>
+              <button type="button" onClick={downloadSnapshot} className="btn btn-snapshot" disabled={snapshotLoading}>
+                {snapshotLoading ? <><span className="spinner-border spinner-border-sm me-1" />...</> : <><i className="fas fa-camera" /></>}
+              </button>
 
-            <button type="button" onClick={downloadSnapshot} className="btn btn-outline-dark btn-sm" disabled={snapshotLoading}>
-              {snapshotLoading ? <><span className="spinner-border spinner-border-sm me-1" />Snapshot...</> : <><i className="fas fa-camera me-1" />Snapshot PNG</>}
-            </button>
-
-            <button type="button" onClick={() => window.print()} className="btn btn-dark btn-sm">
-              <i className="fas fa-print" />
-            </button>
+              <button type="button" onClick={() => window.print()} className="btn btn-print">
+                <i className="fas fa-print" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -267,7 +304,7 @@ const MonthlySummary = () => {
             <table className="table table-hover summary-table mb-0" id="summaryTable">
               <thead>
                 <tr>
-                  <th>রিসেলার</th>
+                  <th className="text-start">রিসেলার</th>
                   <th className="text-end">Projected Bill</th>
                   <th className="text-end">Previous Due</th>
                   <th className="text-end">Total Bill (Due)</th>
@@ -327,7 +364,7 @@ const MonthlySummary = () => {
               </tbody>
 
               <tfoot>
-                <tr className="table-light fw-bold">
+                <tr className="fw-bold">
                   <td className="text-end">সর্বমোট (Total):</td>
                   <td className="text-end">{money(totals.projected)}</td>
                   <td className="text-end">-</td>

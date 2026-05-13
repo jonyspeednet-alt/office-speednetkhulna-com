@@ -1,290 +1,400 @@
 .monthly-summary-page {
   min-height: calc(100vh - 70px);
-  padding: 14px;
-  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%);
-  font-weight: 700;
-  color: #000;
+  padding: 24px;
+  background: #f0f4f8;
+  font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #1a202c;
 }
 
 .monthly-summary-page * {
-  font-weight: 700;
-  color: #000;
+  transition: all 0.2s ease;
 }
 
+/* Header & Brand */
 .summary-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 20px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 24px;
+  background: #fff;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
-.summary-title {
+.header-brand .summary-title {
   margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #2d3748;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-icon {
+  color: #4a90e2;
+  background: #ebf4ff;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
   font-size: 1.1rem;
-  font-weight: 700;
-  color: #1d2a44;
 }
 
 .summary-subtitle {
-  margin: 2px 0 0;
-  font-size: 0.8rem;
-  color: #000;
+  margin: 6px 0 0;
+  font-size: 0.9rem;
+  color: #718096;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
+.partner-badge {
+  background: #2d3748;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Custom Month Selector */
+.custom-month-selector {
+  display: flex;
+  align-items: center;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.month-nav-btn {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  color: #4a5568;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.month-nav-btn:hover {
+  background: #4a90e2;
+  color: #fff;
+  border-color: #4a90e2;
+  transform: translateY(-1px);
+}
+
+.month-display {
+  position: relative;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.month-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.month-hidden-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Controls */
 .summary-controls {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
   flex-wrap: wrap;
 }
 
-.summary-partner-tabs {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .summary-search {
   position: relative;
-  min-width: 220px;
+  min-width: 280px;
 }
 
 .summary-search i {
   position: absolute;
-  left: 10px;
+  left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: #000;
-  font-size: 0.8rem;
+  color: #a0aec0;
 }
 
 .summary-search input {
-  padding-left: 28px;
+  padding-left: 40px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  height: 44px;
+  font-weight: 600;
 }
 
-.summary-month {
-  width: 145px;
+.summary-search input:focus {
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
 }
 
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-export {
+  background: #27ae60;
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  padding: 0 16px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.btn-snapshot, .btn-print {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  color: #4a5568;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-export:hover, .btn-snapshot:hover, .btn-print:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Tabs */
+.summary-partner-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 6px;
+  background: #edf2f7;
+  width: fit-content;
+  border-radius: 14px;
+}
+
+.summary-partner-tabs .btn {
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-weight: 700;
+  border: none;
+  font-size: 0.9rem;
+}
+
+.summary-partner-tabs .btn-dark {
+  background: #2d3748;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.summary-partner-tabs .btn-outline-dark {
+  background: transparent;
+  color: #4a5568;
+}
+
+.summary-partner-tabs .btn-outline-dark:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Metrics Cards */
 .summary-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
 .summary-metric {
   background: #fff;
-  border: 1px solid #e8eef8;
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+  border: 1px solid #f0f4f8;
+  position: relative;
+  overflow: hidden;
 }
 
+.summary-metric::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+}
+
+.summary-metric:nth-child(1)::after { background: #4a90e2; }
+.summary-metric:nth-child(2)::after { background: #27ae60; }
+.summary-metric:nth-child(3)::after { background: #f39c12; }
+.summary-metric:nth-child(4)::after { background: #e74c3c; }
+
 .summary-metric-label {
-  font-size: 0.72rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #718096;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: #000;
-  margin-bottom: 4px;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
 }
 
 .summary-metric-value {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #000;
-  line-height: 1.2;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #2d3748;
 }
 
+/* Table */
 .summary-table-wrap {
   background: #fff;
-  border: 1px solid #e6edf8;
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.summary-loading {
-  background: #f2f2f2;
-  color: #000;
-  border: 1px solid #d0d0d0;
-  border-radius: 8px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  font-size: 0.82rem;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  border: 1px solid #f0f4f8;
 }
 
 .summary-table {
-  font-size: 0.84rem;
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  border: 2px solid #cbd5e0;
 }
 
-.summary-table th {
-  background: #f5f5f5;
-  color: #000;
-  font-size: 0.73rem;
-  font-weight: 700;
+.summary-table thead th {
+  background: #edf2f7;
+  border-bottom: 3px solid #2d3748;
+  border-right: 2px solid #cbd5e0;
+  padding: 14px 12px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #1a202c;
   text-transform: uppercase;
-  white-space: nowrap;
-  border-bottom: 1px solid #e0e8f5;
-  padding: 9px 8px;
+  letter-spacing: 0.05em;
+}
+
+.summary-table thead th.text-start { text-align: left !important; }
+.summary-table thead th.text-end { text-align: right !important; }
+.summary-table thead th.text-center { text-align: center !important; }
+
+.summary-table thead th:last-child {
+  border-right: none;
+}
+
+.summary-table tbody tr {
+  background: #fff;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.summary-table tbody tr:nth-child(even) {
+  background: #f7fafc;
+}
+
+.summary-table tbody tr:hover {
+  background: #ebf4ff;
 }
 
 .summary-table td {
-  border-color: #edf2fb;
-  padding: 8px;
+  padding: 12px 14px;
+  border-right: 2px solid #e2e8f0;
+  font-weight: 700;
+  color: #2d3748;
   vertical-align: middle;
 }
 
-.summary-table td,
-.summary-table th,
-.summary-metric-label,
-.summary-subtitle,
-.summary-company,
-.summary-date-input,
-.summary-loading {
-  font-weight: 700;
-}
+.summary-table td.text-start { text-align: left !important; }
+.summary-table td.text-end { text-align: right !important; }
+.summary-table td.text-center { text-align: center !important; }
 
-.summary-controls input,
-.summary-controls button,
-.summary-controls select,
-.summary-date-input {
-  font-weight: 700;
+.summary-table td:last-child {
+  border-right: none;
 }
 
 .summary-name {
-  color: #000;
-  text-decoration: none;
+  color: #2d3748;
+  font-size: 0.95rem;
   font-weight: 700;
-}
-
-.summary-name:hover {
-  color: #000;
+  display: block;
+  margin-bottom: 2px;
 }
 
 .summary-company {
-  font-size: 0.74rem;
-  color: #000;
+  font-size: 0.8rem;
+  color: #718096;
+  font-weight: 500;
 }
 
 .summary-date-input {
-  border: 1px solid #000;
-  border-radius: 6px;
-  font-size: 0.76rem;
-  padding: 4px 6px;
-  width: 100%;
-  min-width: 140px;
-  color: #000;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
   background: #fff;
+  width: 100%;
+  max-width: 140px;
 }
 
-.summary-next-pay-col {
-  width: 160px;
+/* Footer Total Row - Optimized for B&W Print */
+.summary-table tfoot tr td {
+  background: #edf2f7 !important; /* Light gray background */
+  color: #000 !important; /* Pure black text */
+  font-weight: 800;
+  font-size: 1.1rem;
+  padding: 16px;
+  border-top: 4px double #2d3748; /* Classic double border for totals */
+  border-bottom: 2px solid #2d3748;
 }
 
+/* Ensure colored text is also black/dark for printing if needed, 
+   but for screen we can keep subtle colors if they are readable */
+.summary-table tfoot .text-success { color: #15803d !important; }
+.summary-table tfoot .text-info { color: #0369a1 !important; }
+.summary-table tfoot .text-danger { color: #b91c1c !important; }
+
+/* Responsive */
 @media (max-width: 1200px) {
-  .summary-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  .summary-metrics { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 768px) {
-  .monthly-summary-page {
-    padding: 10px;
-  }
-
-  .summary-controls {
-    width: 100%;
-  }
-
-  .summary-search {
-    min-width: 100%;
-  }
-
-  .summary-month {
-    width: 100%;
-  }
-
-  .summary-metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .summary-table {
-    font-size: 0.8rem;
-  }
+  .monthly-summary-page { padding: 16px; }
+  .summary-header { flex-direction: column; align-items: stretch; }
+  .summary-controls { flex-direction: column; }
+  .summary-search, .custom-month-selector { width: 100%; }
+  .action-buttons { width: 100%; justify-content: space-between; }
+  .summary-metrics { grid-template-columns: 1fr; }
 }
 
+/* Print Styles */
 @media print {
-  @page {
-    size: A4;
-    margin: 6mm;
-  }
-
-  html,
-  body {
-    width: 100%;
-    height: 100%;
-    background: #fff !important;
-    color: #000 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .no-print {
-    display: none !important;
-  }
-
-  .monthly-summary-page {
-    min-height: auto !important;
-    height: auto !important;
-    padding: 0;
-    background: #fff !important;
-  }
-
-  .summary-table-wrap {
-    --ms-print-scale-safe: var(--ms-print-scale, 1);
-    border: none;
-    padding: 0;
-    margin: 0;
-    transform: scale(var(--ms-print-scale-safe));
-    transform-origin: top left;
-    width: calc(100% / var(--ms-print-scale-safe));
-    box-shadow: none;
-    overflow: visible !important;
-  }
-
-  .summary-table {
-    width: 100% !important;
-    font-size: 10.5px;
-    table-layout: fixed;
-  }
-
-  .table-responsive {
-    overflow: visible !important;
-    max-height: none !important;
-  }
-
-  .summary-table th,
-  .summary-table td {
-    padding: 3px 4px;
-    line-height: 1.1;
-    font-weight: 700;
-    color: #000;
-  }
-
-  .summary-table tr {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-
-  .summary-company {
-    display: none !important;
-  }
-
-  /* Hide least-critical column in print so text remains readable */
-  .summary-table th:last-child,
-  .summary-table td:last-child {
-    display: none;
-  }
+  .no-print { display: none !important; }
+  .monthly-summary-page { background: #fff; padding: 0; }
+  .summary-table-wrap { border: none; padding: 0; box-shadow: none; }
+  .summary-table tbody tr { background: transparent; border-bottom: 1px solid #eee; }
+  .summary-table td { padding: 8px; }
 }
