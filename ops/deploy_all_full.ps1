@@ -377,7 +377,7 @@ if ($shouldDeployFrontend) {
 Write-Host '[6/14] Swapping frontend atomically...'
 if ($shouldDeployFrontend) {
   Invoke-Remote "mkdir -p $RemoteRoot/client/dist && rm -rf $RemoteRoot/client/dist/* && cp -a $remoteFrontendStage/. $RemoteRoot/client/dist/ && rm -rf $remoteFrontendStage"
-  Invoke-Remote "mkdir -p $officeDomainRoot && find $officeDomainRoot -maxdepth 1 -type l \( -name index.html -o -name assets -o -name logo-b.png -o -name brand-logo.svg \) -delete && rm -rf $officeDomainRoot/assets && cp $RemoteRoot/client/dist/index.html $officeDomainRoot/index.html && cp -a $RemoteRoot/client/dist/assets $officeDomainRoot/assets && [ -f $RemoteRoot/client/dist/logo-b.png ] && cp $RemoteRoot/client/dist/logo-b.png $officeDomainRoot/logo-b.png || true && [ -f $RemoteRoot/client/dist/brand-logo.svg ] && cp $RemoteRoot/client/dist/brand-logo.svg $officeDomainRoot/brand-logo.svg || true && chmod 644 $officeDomainRoot/index.html && find $officeDomainRoot/assets -type f -exec chmod 644 {} \; && find $officeDomainRoot/assets -type d -exec chmod 755 {} \;"
+  Invoke-Remote "mkdir -p $officeDomainRoot && find $officeDomainRoot -maxdepth 1 -type l \( -name index.html -o -name assets -o -name logo-b.png -o -name brand-logo.svg -o -name speednet_logo.png \) -delete && rm -rf $officeDomainRoot/assets && cp -a $RemoteRoot/client/dist/. $officeDomainRoot/ && chmod 644 $officeDomainRoot/index.html && find $officeDomainRoot/assets -type f -exec chmod 644 {} \; && find $officeDomainRoot/assets -type d -exec chmod 755 {} \;"
   Set-RemoteMeta 'frontend.sha256' $frontendInputHash
 } else {
   Write-Host 'Skipped frontend swap (unchanged source).'

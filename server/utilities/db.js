@@ -1,16 +1,8 @@
 const { Pool } = require('pg');
 const path = require('path');
 
-// Load env based on NODE_ENV - support .env.production for production and .env.local for development
-const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.local';
-const envPath = path.resolve(__dirname, '../../', envFile);
-require('dotenv').config({ path: envPath });
-
-// Fallback to .env if the chosen env file doesn't exist
-const fs = require('fs');
-if (!fs.existsSync(envPath)) {
-  require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
-}
+// Environment variables are expected to be pre-loaded by config/env.js
+// or by a standalone script calling utilities/envLoader.js
 
 const isProd = process.env.NODE_ENV === 'production';
 const useMainDbInLocal = String(process.env.USE_MAIN_DB_IN_LOCAL || 'false').toLowerCase() === 'true';

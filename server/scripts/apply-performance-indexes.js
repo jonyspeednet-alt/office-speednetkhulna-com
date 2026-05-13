@@ -1,14 +1,7 @@
-const path = require('path');
-const fs = require('fs');
-const dotenv = require('dotenv');
+const { loadEnv } = require('../utilities/envLoader');
 
-const envRoot = path.resolve(__dirname, '../..');
-const appEnvRaw = String(process.env.APP_ENV || process.env.NODE_ENV || '').toLowerCase();
-const appEnv = appEnvRaw === 'production' ? 'production' : 'local';
-const modeEnvPath = path.join(envRoot, appEnv === 'production' ? '.env.production' : '.env.local');
-const fallbackEnvPath = path.join(envRoot, '.env');
-if (fs.existsSync(modeEnvPath)) dotenv.config({ path: modeEnvPath });
-if (fs.existsSync(fallbackEnvPath)) dotenv.config({ path: fallbackEnvPath, override: false });
+// Load env (correctly prioritizing secrets/ directory)
+loadEnv();
 
 const pool = require('../utilities/db');
 

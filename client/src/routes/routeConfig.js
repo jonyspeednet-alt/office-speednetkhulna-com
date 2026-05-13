@@ -34,6 +34,6 @@ export const protectedRouteConfig = [
   { path: '/asset-management', key: 'AssetManagement' },
   { path: '/internet-registration/free-ids', key: 'FreeInternetIds' },
   { path: '/internet-registration', key: 'InternetRegistration' },
-  { path: '/create-po', key: 'UnderConstruction' },
-  { path: '/view-pos', key: 'UnderConstruction' }
+  { path: '/create-po', key: 'CreatePO' },
+  { path: '/view-pos', key: 'ViewPOs' }
 ];

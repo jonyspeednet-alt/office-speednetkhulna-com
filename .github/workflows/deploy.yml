@@ -96,7 +96,7 @@ jobs:
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           port: 21098
-          source: "client/dist,ops/office_spa.htaccess,ops/proxy.php"
+          source: "client/dist,ops/office_spa.htaccess"
           target: "/home/speeuvmq/office_deploy_uploads/${{ github.run_id }}"
 
       - name: Deploy via SSH
@@ -144,7 +144,6 @@ jobs:
             [ -f "$UPLOAD_DIR/client/dist/logo-b.png" ] && cp "$UPLOAD_DIR/client/dist/logo-b.png" "$OFFICE_DOMAIN_ROOT/logo-b.png" || true
             [ -f "$UPLOAD_DIR/client/dist/brand-logo.svg" ] && cp "$UPLOAD_DIR/client/dist/brand-logo.svg" "$OFFICE_DOMAIN_ROOT/brand-logo.svg" || true
             [ -f "$UPLOAD_DIR/ops/office_spa.htaccess" ] && cp "$UPLOAD_DIR/ops/office_spa.htaccess" "$OFFICE_DOMAIN_ROOT/.htaccess" || true
-            [ -f "$UPLOAD_DIR/ops/proxy.php" ] && cp "$UPLOAD_DIR/ops/proxy.php" "$OFFICE_DOMAIN_ROOT/proxy.php" || true
 
             echo "Restarting PM2 processes..."
             cd "$APP_DIR"

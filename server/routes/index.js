@@ -40,6 +40,7 @@ router.use('/reports', require('./reportRoutes'));
 router.use('/resellers', require('./resellerRoutes'));
 router.use('/channel-partners', require('./channelPartnerRoutes'));
 router.use('/assets', require('./assetManagementRoutes'));
+router.use('/procurement', require('./procurementRoutes'));
 router.use('/office-work', require('./officeWorkRoutes'));
 router.use('/internet-registrations', require('./internetRegistrationRoutes'));
 

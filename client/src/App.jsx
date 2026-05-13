@@ -42,6 +42,8 @@ const OfficeWorkTracker = lazy(() => import("./pages/OfficeWorkTracker"));
 const AssetManagement = lazy(() => import("./pages/AssetManagement"));
 const InternetRegistration = lazy(() => import("./pages/InternetRegistration"));
 const FreeInternetIds = lazy(() => import("./pages/FreeInternetIds"));
+const CreatePO = lazy(() => import("./pages/CreatePO"));
+const ViewPOs = lazy(() => import("./pages/ViewPOs"));
 
 const LoadingSpinner = () => (
   <div className="d-flex justify-content-center align-items-center vh-100">
@@ -97,6 +99,8 @@ const routeElementByKey = {
   AssetManagement: <AssetManagement />,
   InternetRegistration: <InternetRegistration />,
   FreeInternetIds: <FreeInternetIds />,
+  CreatePO: <CreatePO />,
+  ViewPOs: <ViewPOs />,
   UnderConstruction: <UnderConstruction />,
 };
 

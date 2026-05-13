@@ -1,13 +1,9 @@
-const { Pool } = require('pg');
+const { loadEnv } = require('../utilities/envLoader');
 
-// Hardcoded for main database (matching .env.local settings for SSH tunnel)
-const pool = new Pool({
-  host: '127.0.0.1',
-  port: 5433,
-  database: 'speeuvmq_speednet_office',
-  user: 'speeuvmq_speeuvmq',
-  password: 'speednet_office',
-});
+// Load env
+loadEnv();
+
+const pool = require('../utilities/db');
 
 const migrationSQL = `
 -- Create office_work_entries table (without FK for now due to permission)
@@ -59,15 +55,15 @@ CREATE INDEX IF NOT EXISTS idx_office_work_sessions_user_date ON office_work_ses
 async function runMigration() {
   try {
     console.log('Connecting to database...');
-    
+
     // Check which database we're connected to
     const dbInfo = await pool.query('SELECT current_database() as db');
     console.log('Connected to database:', dbInfo.rows[0].db);
-    
+
     console.log('Running migration...');
     await pool.query(migrationSQL);
     console.log('Migration completed successfully!');
-    
+
     // Verify the table was created
     const result = await pool.query(`
       SELECT table_name FROM information_schema.tables 
@@ -78,7 +74,7 @@ async function runMigration() {
     } else {
       console.log('✗ Table was not created');
     }
-    
+
     await pool.end();
     process.exit(0);
   } catch (error) {
