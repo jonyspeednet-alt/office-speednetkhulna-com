@@ -1,9 +1,12 @@
 const { loadEnv } = require('../utilities/envLoader');
 
+// Preserve original process.env.PORT before loadEnv might overwrite it via dotenv
+const ORIGINAL_PORT = process.env.PORT;
+
 // Initialize environment
 const { appEnv } = loadEnv();
 
-const PORT = process.env.PORT || 5000;
+const PORT = ORIGINAL_PORT || process.env.PORT || 5000;
 const authSecretConfigured = Boolean(process.env.JWT_SECRET || process.env.SESSION_SECRET);
 const requestLogEnabled =
     String(process.env.REQUEST_LOG_ENABLED || '').toLowerCase() === 'true' ||
