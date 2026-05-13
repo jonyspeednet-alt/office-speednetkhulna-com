@@ -239,30 +239,43 @@ const initMonthlyPayments = async (req, res) => {
       return res.json({ message: "Already initialized", month });
     }
 
+    // Fetch users and their previous dues
+    const prevMonth = (() => {
+      const [y, m] = month.split("-");
+      const d = new Date(parseInt(y), parseInt(m) - 2, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    })();
+
     const users = await pool.query(
-      `SELECT id, monthly_rate FROM channel_partner_users
-       WHERE reseller_id = $1 AND status = 'active'`,
-      [resellerId]
+      `SELECT
+        cpu.id,
+        COALESCE(cpu.monthly_rate, 0)::numeric AS monthly_rate,
+        COALESCE(prev.amount_due - prev.amount_paid, 0)::numeric AS prev_due
+       FROM channel_partner_users cpu
+       LEFT JOIN channel_user_payments prev ON prev.user_id = cpu.id AND prev.month = $2
+       WHERE cpu.reseller_id = $1 AND cpu.status = 'active'`,
+      [resellerId, prevMonth]
     );
 
     if (users.rows.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "No active users found for this partner" });
+      return res.status(400).json({ message: "No active users found for this partner" });
     }
 
     const values = users.rows
       .map(
         (u) =>
-          `(${resellerId}, ${u.id}, '${month}', ${parseAmount(u.monthly_rate, 0)}, 0, 'unpaid')`
+          `(${resellerId}, ${u.id}, '${month}', ${Number(u.monthly_rate) + Number(u.prev_due)}, 0, 'unpaid')`
       )
       .join(", ");
 
     await pool.query(
       `INSERT INTO channel_user_payments (reseller_id, user_id, month, amount_due, amount_paid, payment_status)
        VALUES ${values}
-       ON CONFLICT (user_id, month) DO NOTHING`
+       ON CONFLICT (user_id, month) DO UPDATE SET
+         amount_due = EXCLUDED.amount_due,
+         updated_at = NOW()`
     );
+
 
     res.json({ message: "Monthly payments initialized", month, count: users.rows.length });
   } catch (error) {
@@ -474,114 +487,104 @@ const getCommissionSummary = async (req, res) => {
   }
 };
 
+const generateCommissionInternal = async (resellerId, month) => {
+  const resellerResult = await pool.query(
+    `SELECT id, COALESCE(profit_share_percentage, 0)::numeric AS profit_share_percentage
+     FROM resellers WHERE id = $1`,
+    [resellerId]
+  );
+  if (!resellerResult.rows.length) return null;
+
+  const profitPct = Number(resellerResult.rows[0].profit_share_percentage || 0);
+
+  const collectionResult = await pool.query(
+    `SELECT
+      COUNT(*) AS total_users,
+      COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
+      COALESCE(SUM(amount_paid), 0)::numeric AS total_collected
+     FROM channel_user_payments
+     WHERE reseller_id = $1 AND month = $2`,
+    [resellerId, month]
+  );
+  const stats = collectionResult.rows[0] || {};
+  const totalCollected = Number(stats.total_collected || 0);
+  const grossCommission = Math.round(totalCollected * (profitPct / 100) * 100) / 100;
+
+  const prevBalanceResult = await pool.query(
+    `SELECT COALESCE(closing_balance, 0)::numeric AS balance
+     FROM channel_commission_logs
+     WHERE reseller_id = $1 AND month < $2
+     ORDER BY month DESC LIMIT 1`,
+    [resellerId, month]
+  );
+  const previousBalance = Number(prevBalanceResult.rows[0]?.balance || 0);
+
+  const existingPaidResult = await pool.query(
+    `SELECT COALESCE(SUM(amount), 0)::numeric AS total
+     FROM channel_commission_payments
+     WHERE reseller_id = $1 AND commission_log_id IN (
+       SELECT id FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2
+     )`,
+    [resellerId, month]
+  );
+  const alreadyPaid = Number(existingPaidResult.rows[0]?.total || 0);
+
+  const netCommission = grossCommission; // Adjustments/Deductions are handled via update
+  const totalPayable = netCommission + previousBalance;
+  const closingBalance = totalPayable - alreadyPaid;
+
+  const paymentStatus =
+    alreadyPaid >= totalPayable && totalPayable > 0
+      ? "paid"
+      : alreadyPaid > 0
+        ? "partial"
+        : "pending";
+
+  const result = await pool.query(
+    `INSERT INTO channel_commission_logs
+      (reseller_id, month, total_users, paying_users, total_collection,
+       profit_share_pct, gross_commission, adjustments, deductions,
+       net_commission, previous_balance, total_payable,
+       paid_amount, closing_balance, payment_status, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $7, $8, $9, $10, $11, $12, 'draft')
+     ON CONFLICT (reseller_id, month) DO UPDATE SET
+       total_users = EXCLUDED.total_users,
+       paying_users = EXCLUDED.paying_users,
+       total_collection = EXCLUDED.total_collection,
+       profit_share_pct = EXCLUDED.profit_share_pct,
+       gross_commission = EXCLUDED.gross_commission,
+       net_commission = EXCLUDED.gross_commission + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0),
+       previous_balance = EXCLUDED.previous_balance,
+       total_payable = EXCLUDED.gross_commission + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance,
+       paid_amount = $10,
+       closing_balance = EXCLUDED.gross_commission + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $10,
+
+       payment_status = $12,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      resellerId, month, Number(stats.total_users || 0), Number(stats.paying_users || 0),
+      totalCollected, profitPct, grossCommission, previousBalance, totalPayable,
+      alreadyPaid, closingBalance, paymentStatus,
+    ]
+  );
+  return result.rows[0];
+};
+
 const generateCommission = async (req, res) => {
   try {
     await initChannelPartnerTables();
     const { resellerId } = req.params;
     const month = req.body.month || getDhakaMonthYm();
-
-    const resellerResult = await pool.query(
-      `SELECT id, COALESCE(profit_share_percentage, 0)::numeric AS profit_share_percentage
-       FROM resellers WHERE id = $1`,
-      [resellerId]
-    );
-    if (!resellerResult.rows.length) {
-      return res.status(404).json({ message: "Reseller not found" });
-    }
-
-    const profitPct = Number(
-      resellerResult.rows[0].profit_share_percentage || 0
-    );
-
-    const collectionResult = await pool.query(
-      `SELECT
-        COUNT(*) AS total_users,
-        COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
-        COALESCE(SUM(amount_paid), 0)::numeric AS total_collected
-       FROM channel_user_payments
-       WHERE reseller_id = $1 AND month = $2`,
-      [resellerId, month]
-    );
-    const stats = collectionResult.rows[0] || {};
-    const totalCollected = Number(stats.total_collected || 0);
-    const grossCommission =
-      Math.round(totalCollected * (profitPct / 100) * 100) / 100;
-
-    const prevBalanceResult = await pool.query(
-      `SELECT COALESCE(closing_balance, 0)::numeric AS balance
-       FROM channel_commission_logs
-       WHERE reseller_id = $1 AND month < $2
-       ORDER BY month DESC LIMIT 1`,
-      [resellerId, month]
-    );
-    const previousBalance = Number(
-      prevBalanceResult.rows[0]?.balance || 0
-    );
-
-    const existingPaidResult = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0)::numeric AS total
-       FROM channel_commission_payments
-       WHERE reseller_id = $1 AND commission_log_id IN (
-         SELECT id FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2
-       )`,
-      [resellerId, month]
-    );
-    const alreadyPaid = Number(existingPaidResult.rows[0]?.total || 0);
-
-    const netCommission = grossCommission;
-    const totalPayable = netCommission + previousBalance;
-    const closingBalance = totalPayable - alreadyPaid;
-
-    const paymentStatus =
-      alreadyPaid >= totalPayable && totalPayable > 0
-        ? "paid"
-        : alreadyPaid > 0
-          ? "partial"
-          : "pending";
-
-    const result = await pool.query(
-      `INSERT INTO channel_commission_logs
-        (reseller_id, month, total_users, paying_users, total_collection,
-         profit_share_pct, gross_commission, adjustments, deductions,
-         net_commission, previous_balance, total_payable,
-         paid_amount, closing_balance, payment_status, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $7, $8, $9, $10, $11, $12, 'draft')
-       ON CONFLICT (reseller_id, month) DO UPDATE SET
-         total_users = EXCLUDED.total_users,
-         paying_users = EXCLUDED.paying_users,
-         total_collection = EXCLUDED.total_collection,
-         profit_share_pct = EXCLUDED.profit_share_pct,
-         gross_commission = EXCLUDED.gross_commission,
-         net_commission = EXCLUDED.gross_commission + channel_commission_logs.adjustments - channel_commission_logs.deductions,
-         previous_balance = EXCLUDED.previous_balance,
-         total_payable = EXCLUDED.gross_commission + channel_commission_logs.adjustments - channel_commission_logs.deductions + EXCLUDED.previous_balance,
-         paid_amount = $10,
-         closing_balance = EXCLUDED.gross_commission + channel_commission_logs.adjustments - channel_commission_logs.deductions + EXCLUDED.previous_balance - $10,
-         payment_status = $12,
-         updated_at = NOW()
-       RETURNING *`,
-      [
-        resellerId,
-        month,
-        Number(stats.total_users || 0),
-        Number(stats.paying_users || 0),
-        totalCollected,
-        profitPct,
-        grossCommission,
-        previousBalance,
-        totalPayable,
-        alreadyPaid,
-        closingBalance,
-        paymentStatus,
-      ]
-    );
-
-    res.json(result.rows[0]);
+    const result = await generateCommissionInternal(resellerId, month);
+    if (!result) return res.status(404).json({ message: "Reseller not found" });
+    res.json(result);
   } catch (error) {
     console.error("channelPartner.generateCommission:", error);
     res.status(500).json({ message: "Failed to generate commission" });
   }
 };
+
 
 const adjustCommission = async (req, res) => {
   try {
@@ -941,12 +944,21 @@ const importChannelData = async (req, res) => {
       );
 
       await client.query("COMMIT");
+
+      // Auto-trigger commission sync for the month
+      try {
+        await generateCommissionInternal(resellerId, month);
+      } catch (ce) {
+        console.warn("Commission sync after import failed:", ce.message);
+      }
+
       res.json({
         message: "Import successful",
         created: createdCount,
         updated: updatedCount,
         total: data.length
       });
+
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

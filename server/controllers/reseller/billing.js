@@ -143,9 +143,35 @@ const finalizeResellerBill = async (client, { resellerId, monthYm, adjustment, a
     if (!reseller) throw new Error("Reseller not found");
 
     // 3. Calculate Bill Breakdown
-    // Note: We import calculateMonthlyBillBreakdown dynamically to avoid circular dependency if any
     const { calculateMonthlyBillBreakdown } = require("./service");
-    const breakdown = await calculateMonthlyBillBreakdown(resellerId, monthYm, reseller);
+    let breakdown;
+
+    if (reseller.partner_type === 'channel_partner') {
+        const commLogResult = await client.query(
+            `SELECT total_collection, net_commission, month FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2`,
+            [resellerId, monthYm]
+        );
+        if (commLogResult.rows.length > 0) {
+            const cLog = commLogResult.rows[0];
+            const netPayable = Number(cLog.total_collection || 0) - Number(cLog.net_commission || 0);
+            breakdown = {
+                total: netPayable,
+                items: [
+                    {
+                        desc: `Channel Collection Share (${cLog.month})`,
+                        total: netPayable,
+                        collection: Number(cLog.total_collection),
+                        commission: Number(cLog.net_commission)
+                    }
+                ]
+            };
+        } else {
+            // Default to bandwidth breakdown or 0
+            breakdown = await calculateMonthlyBillBreakdown(resellerId, monthYm, reseller);
+        }
+    } else {
+        breakdown = await calculateMonthlyBillBreakdown(resellerId, monthYm, reseller);
+    }
 
     // 4. Calculate Previous Due
     // Sum of all monthly_bills + adjustments - Sum of all payments/discounts BEFORE this month
@@ -316,6 +342,18 @@ const getMonthlySummary = async (req, res) => {
             return acc;
         }, {});
 
+        // 3.1 Fetch channel partner commission logs for the month
+        const channelCommResult = await pool.query(
+            `SELECT reseller_id, total_collection, net_commission 
+             FROM channel_commission_logs 
+             WHERE month = $1`,
+            [targetMonthYm]
+        );
+        const channelCommMap = channelCommResult.rows.reduce((acc, c) => {
+            acc[c.reseller_id] = c;
+            return acc;
+        }, {});
+
         // 4. Process each reseller in parallel
         const { calculateMonthlyBillBreakdown } = require("./service");
         const isCurrentMonth = targetMonthYm === getDhakaMonthYm();
@@ -331,9 +369,16 @@ const getMonthlySummary = async (req, res) => {
                 projected = Number(bill.amount || 0) + Number(bill.adjustment || 0);
                 prevDue = Number(bill.previous_due || 0);
             } else {
-                if (isCurrentMonth) {
+                if (r.partner_type === 'channel_partner') {
+                    const cLog = channelCommMap[r.id];
+                    if (cLog) {
+                        // For Channel Partners, projected bill is (Collection - Partner's Share)
+                        projected = Number(cLog.total_collection || 0) - Number(cLog.net_commission || 0);
+                    } else {
+                        projected = 0;
+                    }
+                } else if (isCurrentMonth) {
                     try {
-                        // Pass the full reseller row 'r' to avoid extra query inside calculateMonthlyBillBreakdown
                         const breakdown = await calculateMonthlyBillBreakdown(r.id, targetMonthYm, r);
                         projected = Number(breakdown.total || 0);
                     } catch (e) {
@@ -344,6 +389,7 @@ const getMonthlySummary = async (req, res) => {
                 }
                 prevDue = Number(r.previous_month_due || 0);
             }
+
 
             const paid = Number(logs.paid || 0);
             const discount = Number(logs.discount || 0);

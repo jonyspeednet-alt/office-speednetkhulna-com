@@ -699,28 +699,77 @@ const ResellerProfile = () => {
               {activeTab === 'cp_collection' && isChannel && (
                 <div className="p-3">
                   <div className="d-flex justify-content-between align-items-center mb-3">
-                    <div className="d-flex gap-2 align-items-center">
-                      <input type="month" className="form-control form-control-sm" value={cpMonth} onChange={(e) => setCpMonth(e.target.value)} style={{ width: 170 }} />
-                      <span className="badge bg-info">{cpUserPayments.length} জন</span>
+                  {/* Dashboard Header for Channel Partner */}
+                  <div className="row g-3 mb-4 mt-1">
+                    <div className="col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden position-relative" style={{ background: 'linear-gradient(135deg, #4318ff 0%, #7c58ff 100%)' }}>
+                        <div className="card-body p-3 text-white">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <div className="rounded-circle bg-white bg-opacity-20 p-2" style={{ width: 35, height: 35, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-users" /></div>
+                            <span className="small opacity-75">মোট ইউজার</span>
+                          </div>
+                          <h4 className="fw-bold mb-0">{cpUserPayments.length} জন</h4>
+                          <div className="small opacity-75 mt-1">সক্রিয় ইউজার</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style={{ background: 'linear-gradient(135deg, #05cd99 0%, #00a38d 100%)' }}>
+                        <div className="card-body p-3 text-white">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <div className="rounded-circle bg-white bg-opacity-20 p-2" style={{ width: 35, height: 35, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-money-bill-wave" /></div>
+                            <span className="small opacity-75">মোট কালেকশন</span>
+                          </div>
+                          <h4 className="fw-bold mb-0">{money(cpUserPayments.reduce((s, p) => s + Number(p.amount_paid || 0), 0))}</h4>
+                          <div className="progress mt-2" style={{ height: 4, backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                            <div className="progress-bar bg-white" style={{ width: `${Math.min(100, (cpUserPayments.reduce((s, p) => s + Number(p.amount_paid || 0), 0) / (cpUserPayments.reduce((s, p) => s + Number(p.amount_due || 1), 0) || 1)) * 100)}%` }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style={{ background: 'linear-gradient(135deg, #ffb547 0%, #ff8f00 100%)' }}>
+                        <div className="card-body p-3 text-white">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <div className="rounded-circle bg-white bg-opacity-20 p-2" style={{ width: 35, height: 35, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-hand-holding-usd" /></div>
+                            <span className="small opacity-75">বকেয়া বিল</span>
+                          </div>
+                          <h4 className="fw-bold mb-0">{money(cpUserPayments.reduce((s, p) => s + (Number(p.amount_due || 0) - Number(p.amount_paid || 0)), 0))}</h4>
+                          <div className="small opacity-75 mt-1">{cpUserPayments.filter(p => Number(p.amount_paid) === 0).length} জন বাকি</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-md-3">
+                      <div className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style={{ background: 'linear-gradient(135deg, #111 0%, #333 100%)' }}>
+                        <div className="card-body p-3 text-white">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <div className="rounded-circle bg-white bg-opacity-20 p-2" style={{ width: 35, height: 35, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><i className="fas fa-chart-line" /></div>
+                            <span className="small opacity-75">কালেকশন হার</span>
+                          </div>
+                          <h4 className="fw-bold mb-0">
+                            {Math.round((cpUserPayments.filter(p => Number(p.amount_paid) > 0).length / (cpUserPayments.length || 1)) * 100)}%
+                          </h4>
+                          <div className="small opacity-75 mt-1">পারফরম্যান্স</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <div className="d-flex gap-2 align-items-center bg-light p-2 rounded-3 border">
+                      <i className="far fa-calendar-alt text-primary ms-1" />
+                      <input type="month" className="form-control form-control-sm border-0 bg-transparent fw-bold" value={cpMonth} onChange={(e) => setCpMonth(e.target.value)} style={{ width: 150 }} />
                     </div>
                     <div className="d-flex gap-2">
-                      <button className="btn btn-sm btn-info text-white" onClick={() => setShowImport(true)}>
-                        <i className="fas fa-file-excel me-1" />Excel Import
+                      <button className="btn btn-sm btn-info text-white rounded-pill px-3 shadow-sm" onClick={() => setShowImport(true)}>
+                        <i className="fas fa-file-excel me-1" /> Excel Import
                       </button>
-                      <button className="btn btn-sm btn-outline-primary" onClick={async () => { await initMonthlyPayments(profileId, cpMonth); loadUserPayments(); }}>
-                        <i className="fas fa-sync me-1" />ইনিশিয়ালাইজ
+                      <button className="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" onClick={async () => { await initMonthlyPayments(profileId, cpMonth); loadUserPayments(); }}>
+                        <i className="fas fa-sync me-1" /> ইনিশিয়ালাইজ
                       </button>
                     </div>
-
                   </div>
-                  {cpUserPayments.length > 0 && (
-                    <div className="alert alert-info py-2 small mb-3">
-                      <strong>সারাংশ:</strong> মোট ডিউ: {money(cpUserPayments.reduce((s, p) => s + Number(p.amount_due || 0), 0))} |
-                      কালেকশন: {money(cpUserPayments.reduce((s, p) => s + Number(p.amount_paid || 0), 0))} |
-                      পেমেন্ট দিয়েছে: {cpUserPayments.filter(p => Number(p.amount_paid) > 0).length} জন |
-                      বাকি: {cpUserPayments.filter(p => Number(p.amount_paid) === 0).length} জন
-                    </div>
-                  )}
+
                   <div className="table-responsive" style={{ maxHeight: 380 }}>
                     <table className="table table-hover align-middle mb-0 table-sm">
                       <thead className="table-light"><tr><th>ইউজার</th><th>আইডি</th><th>প্যাকেজ</th><th>ডিউ</th><th>পেমেন্ট</th><th>স্ট্যাটাস</th><th></th></tr></thead>
@@ -798,29 +847,56 @@ const ResellerProfile = () => {
                           <tr><td colSpan="12" className="text-center text-muted py-4">কোনো কমিশন ইতিহাস নেই</td></tr>
                         ) : cpHistory.map((h) => (
                           <tr key={h.id}>
-                            <td className="fw-bold">{h.month}</td>
-                            <td>{h.paying_users}/{h.total_users}</td>
-                            <td>{money(h.total_collection)}</td>
-                            <td>{Number(h.profit_share_pct)}%</td>
-                            <td>{money(h.gross_commission)}</td>
-                            <td className={Number(h.adjustments) !== 0 ? 'text-info' : ''}>{Number(h.adjustments) !== 0 ? money(h.adjustments) : '-'}</td>
-                            <td className={Number(h.deductions) !== 0 ? 'text-danger' : ''}>{Number(h.deductions) !== 0 ? money(h.deductions) : '-'}</td>
-                            <td className="fw-bold">{money(h.net_commission)}</td>
-                            <td className="text-success">{money(h.paid_amount)}</td>
-                            <td className={Number(h.closing_balance) > 0 ? 'text-danger fw-bold' : 'text-success'}>{money(h.closing_balance)}</td>
-                            <td><span className={`badge ${h.status === 'finalized' ? 'bg-success' : 'bg-warning'} bg-opacity-10 text-dark border`}>{h.status}</span></td>
+                            <td className="fw-bold text-primary">{h.month}</td>
                             <td>
-                              <div className="btn-group btn-group-sm">
+                              <div className="fw-bold">{h.paying_users}/{h.total_users}</div>
+                              <div className="text-muted" style={{ fontSize: 10 }}>Paid Users</div>
+                            </td>
+                            <td><div className="fw-bold">{money(h.total_collection)}</div></td>
+                            <td><span className="badge bg-light text-dark border">{Number(h.profit_share_pct)}%</span></td>
+                            <td>{money(h.gross_commission)}</td>
+                            <td className={Number(h.adjustments) !== 0 ? 'text-info' : ''}>
+                              {Number(h.adjustments) !== 0 ? (
+                                <div className="d-flex align-items-center">
+                                  <span className="me-1 text-success">+</span>{money(h.adjustments)}
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td className={Number(h.deductions) !== 0 ? 'text-danger' : ''}>
+                              {Number(h.deductions) !== 0 ? (
+                                <div className="d-flex align-items-center">
+                                  <span className="me-1">-</span>{money(h.deductions)}
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td className="fw-bold text-dark">{money(h.net_commission)}</td>
+                            <td className="text-success fw-bold">{money(h.paid_amount)}</td>
+                            <td className={Number(h.closing_balance) > 0 ? 'text-danger fw-bold' : 'text-success'}>
+                              {money(h.closing_balance)}
+                              {Number(h.closing_balance) > 0 && <i className="fas fa-exclamation-circle ms-1 small" />}
+                            </td>
+                            <td>
+                              <span className={`badge rounded-pill ${h.status === 'finalized' ? 'bg-success' : 'bg-warning'} bg-opacity-10 text-dark border px-2`}>
+                                {h.status === 'finalized' ? 'Finalized' : 'Draft'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="btn-group shadow-sm rounded-pill overflow-hidden">
                                 {h.status === 'draft' && (
                                   <>
-                                    <button className="btn btn-outline-info btn-sm" onClick={() => { setAdjForm({ type: 'adjustment', amount: '', note: '' }); setShowAdjust(h); }} title="সমন্বয়"><i className="fas fa-sliders-h" /></button>
-                                    <button className="btn btn-outline-success btn-sm" onClick={async () => { if (window.confirm('কমিশন Finalize করতে চান?')) { await finalizeCommission(profileId, h.id); loadChannelData(); } }} title="Finalize"><i className="fas fa-check" /></button>
+                                    <button className="btn btn-white btn-sm border" onClick={() => { setAdjForm({ type: 'adjustment', amount: '', note: '' }); setShowAdjust(h); }} title="সমন্বয়">
+                                      <i className="fas fa-sliders-h text-info" />
+                                    </button>
+                                    <button className="btn btn-white btn-sm border" onClick={async () => { if (window.confirm('কমিশন Finalize করতে চান?')) { await finalizeCommission(profileId, h.id); loadChannelData(); } }} title="Finalize">
+                                      <i className="fas fa-check text-success" />
+                                    </button>
                                   </>
                                 )}
                               </div>
                             </td>
                           </tr>
                         ))}
+
                       </tbody>
                     </table>
                   </div>
