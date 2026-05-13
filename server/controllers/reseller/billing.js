@@ -266,30 +266,34 @@ const getMonthlySummary = async (req, res) => {
         const targetMonthDate = `${targetMonthYm}-01`;
         const info = monthInfo(targetMonthYm);
 
-        // 1. Fetch Resellers
+        // 1. Fetch active resellers with all billing-related columns
         let resellerQuery = `
-            SELECT id, user_id, COALESCE(reseller_name, company_name) AS name, company_name, contact_no AS contact,
-                   COALESCE(status, 'active') AS status, partner_type, next_pay_date,
+            SELECT *, 
+                   COALESCE(reseller_name, company_name) AS name,
                    COALESCE(previous_month_due, 0)::numeric AS previous_month_due,
-                   COALESCE(current_projected_bill, 0)::numeric AS current_projected_bill,
-                   created_at
+                   COALESCE(current_projected_bill, 0)::numeric AS current_projected_bill
             FROM resellers
             WHERE status = 'active'
         `;
-        const resellerParams = [];
-        if (partner_type) {
-            resellerParams.push(partner_type);
+
+        const queryParams = [];
+        if (partner_type && partner_type !== 'all') {
             resellerQuery += ` AND partner_type = $1`;
+            queryParams.push(partner_type);
         }
-        resellerQuery += ` ORDER BY name ASC`;
-        const resellersResult = await pool.query(resellerQuery, resellerParams);
+
+        const resellersResult = await pool.query(resellerQuery, queryParams);
         const resellers = resellersResult.rows;
 
-        // 2. Fetch Finalized Bills for the month
+        if (resellers.length === 0) {
+            return res.json({ month: targetMonthYm, rows: [], totals: { projected: 0, paid: 0, discount: 0, due: 0 } });
+        }
+
+        // 2. Fetch finalized bills for the target month
         const billsResult = await pool.query(
-            `SELECT reseller_id, amount, adjustment, previous_due, created_at
-             FROM monthly_bills
-             WHERE bill_month = $1::date`,
+            `SELECT reseller_id, amount, adjustment, previous_due 
+             FROM monthly_bills 
+             WHERE bill_month = $1`,
             [targetMonthDate]
         );
         const billsMap = billsResult.rows.reduce((acc, b) => {
@@ -297,13 +301,13 @@ const getMonthlySummary = async (req, res) => {
             return acc;
         }, {});
 
-        // 3. Fetch Payments and Discounts for the month
+        // 3. Fetch payments and discounts from billing_logs for the target month
         const logsResult = await pool.query(
             `SELECT reseller_id, 
-                    SUM(CASE WHEN log_type = 'payment' THEN transaction_amount ELSE 0 END)::numeric AS paid,
-                    SUM(CASE WHEN log_type = 'discount' THEN transaction_amount ELSE 0 END)::numeric AS discount
-             FROM billing_logs
-             WHERE TO_CHAR(COALESCE(effective_date, created_at), 'YYYY-MM') = $1
+                    SUM(CASE WHEN log_type IN ('payment', 'collection') THEN transaction_amount ELSE 0 END) AS paid,
+                    SUM(CASE WHEN log_type = 'discount' THEN transaction_amount ELSE 0 END) AS discount
+             FROM billing_logs 
+             WHERE TO_CHAR(effective_date, 'YYYY-MM') = $1
              GROUP BY reseller_id`,
             [targetMonthYm]
         );
@@ -312,12 +316,11 @@ const getMonthlySummary = async (req, res) => {
             return acc;
         }, {});
 
-        // 4. Process each reseller
+        // 4. Process each reseller in parallel
         const { calculateMonthlyBillBreakdown } = require("./service");
-        const rows = [];
-        const totals = { projected: 0, paid: 0, discount: 0, due: 0 };
+        const isCurrentMonth = targetMonthYm === getDhakaMonthYm();
 
-        for (const r of resellers) {
+        const rowPromises = resellers.map(async (r) => {
             const bill = billsMap[r.id];
             const logs = logsMap[r.id] || { paid: 0, discount: 0 };
 
@@ -328,11 +331,10 @@ const getMonthlySummary = async (req, res) => {
                 projected = Number(bill.amount || 0) + Number(bill.adjustment || 0);
                 prevDue = Number(bill.previous_due || 0);
             } else {
-                // If not finalized, we need to calculate or use cache
-                // For the summary, we'll try to calculate it if it's the current month
-                if (targetMonthYm === getDhakaMonthYm()) {
+                if (isCurrentMonth) {
                     try {
-                        const breakdown = await calculateMonthlyBillBreakdown(r.id, targetMonthYm, null);
+                        // Pass the full reseller row 'r' to avoid extra query inside calculateMonthlyBillBreakdown
+                        const breakdown = await calculateMonthlyBillBreakdown(r.id, targetMonthYm, r);
                         projected = Number(breakdown.total || 0);
                     } catch (e) {
                         projected = Number(r.current_projected_bill || 0);
@@ -348,7 +350,7 @@ const getMonthlySummary = async (req, res) => {
             const totalBill = prevDue + projected;
             const newDue = totalBill - paid - discount;
 
-            const row = {
+            return {
                 id: r.id,
                 name: r.name,
                 company: r.company_name,
@@ -361,14 +363,18 @@ const getMonthlySummary = async (req, res) => {
                 new_due: newDue,
                 next_pay_date: r.next_pay_date,
             };
+        });
 
-            rows.push(row);
-
-            totals.projected += projected;
-            totals.paid += paid;
-            totals.discount += discount;
-            totals.due += newDue;
-        }
+        const rows = await Promise.all(rowPromises);
+        
+        // Calculate grand totals
+        const totals = rows.reduce((acc, row) => {
+            acc.projected += row.projected;
+            acc.paid += row.paid;
+            acc.discount += row.discount;
+            acc.due += row.new_due;
+            return acc;
+        }, { projected: 0, paid: 0, discount: 0, due: 0 });
 
         res.json({
             month: targetMonthYm,

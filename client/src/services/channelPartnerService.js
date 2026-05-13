@@ -58,3 +58,13 @@ export const getCommissionPayments = async (resellerId) =>
 // Statement
 export const getChannelStatement = async (resellerId) =>
   (await apiClient.get(`${base}/${resellerId}/statement`)).data;
+
+// Excel Import
+export const importChannelData = async (resellerId, month, file) => {
+  const formData = new FormData();
+  formData.append('month', month);
+  formData.append('file', file);
+  return (await apiClient.post(`${base}/${resellerId}/import-user-list`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })).data;
+};

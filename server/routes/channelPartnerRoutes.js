@@ -5,6 +5,7 @@ const {
   requirePermission,
   requireAnyPermission,
 } = require("../middleware/checkPermission");
+const { upload } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -29,6 +30,14 @@ router.get("/:resellerId/users", canView, controller.listUsers);
 router.post("/:resellerId/users", canManage, controller.addUser);
 router.put("/:resellerId/users/:userId", canManage, controller.updateUser);
 router.delete("/:resellerId/users/:userId", canManage, controller.deleteUser);
+
+// Excel Import
+router.post(
+  "/:resellerId/import-user-list",
+  upload.single("file"),
+  canFinancials,
+  controller.importChannelData
+);
 
 // User payment collection tracking
 router.get(

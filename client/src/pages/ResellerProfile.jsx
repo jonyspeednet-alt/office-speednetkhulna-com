@@ -5,8 +5,10 @@ import {
   getChannelUsers, addChannelUser, updateChannelUser, deleteChannelUser,
   getUserPayments, initMonthlyPayments, recordUserPayment, bulkRecordPayments,
   getCommissionSummary, generateCommission, adjustCommission, finalizeCommission,
-  getCommissionHistory, recordCommissionPayment, getCommissionPayments, getChannelStatement
+  getCommissionHistory, recordCommissionPayment, getCommissionPayments, getChannelStatement,
+  importChannelData
 } from '../services/channelPartnerService';
+
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend } from 'chart.js';
 
@@ -113,6 +115,11 @@ const ResellerProfile = () => {
   const [commPayForm, setCommPayForm] = useState({ amount: '', payment_date: getDhakaDateYmd(), payment_method: 'Cash', reference_no: '', note: '' });
   const [adjForm, setAdjForm] = useState({ type: 'adjustment', amount: '', note: '' });
   const [cpUserSearch, setCpUserSearch] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importMonth, setImportMonth] = useState(getDhakaDateYmd().slice(0, 7));
+
 
   const loadChannelData = useCallback(async () => {
     if (!profileId || !isChannel) return;
@@ -697,10 +704,14 @@ const ResellerProfile = () => {
                       <span className="badge bg-info">{cpUserPayments.length} জন</span>
                     </div>
                     <div className="d-flex gap-2">
+                      <button className="btn btn-sm btn-info text-white" onClick={() => setShowImport(true)}>
+                        <i className="fas fa-file-excel me-1" />Excel Import
+                      </button>
                       <button className="btn btn-sm btn-outline-primary" onClick={async () => { await initMonthlyPayments(profileId, cpMonth); loadUserPayments(); }}>
                         <i className="fas fa-sync me-1" />ইনিশিয়ালাইজ
                       </button>
                     </div>
+
                   </div>
                   {cpUserPayments.length > 0 && (
                     <div className="alert alert-info py-2 small mb-3">
@@ -1270,6 +1281,47 @@ const ResellerProfile = () => {
           </form>
         </ModalWrap>
       )}
+
+      {showImport && (
+        <ModalWrap title="Excel ডাটা ইম্পোর্ট করুন" onClose={() => { if (!importing) setShowImport(false); }}>
+          <div className="p-2">
+            <div className="alert alert-info py-2 small mb-3">
+              <i className="fas fa-info-circle me-2" />
+              Excel ফাইলে অবশ্যই <strong>&quot;Customer Name&quot;</strong> এবং <strong>&quot;Receive Amount&quot;</strong> কলাম থাকতে হবে।
+            </div>
+            <div className="mb-3">
+              <label className="form-label small">মাস নির্বাচন করুন</label>
+              <input type="month" className="form-control form-control-sm" value={importMonth} onChange={e => setImportMonth(e.target.value)} disabled={importing} />
+            </div>
+            <div className="mb-3">
+              <label className="form-label small">Excel ফাইল আপলোড করুন (.xlsx, .xls)</label>
+              <input type="file" className="form-control form-control-sm" accept=".xlsx, .xls" onChange={e => setImportFile(e.target.files[0])} disabled={importing} />
+            </div>
+            <div className="text-end pt-2">
+              <button className="btn btn-sm btn-light me-2 rounded-pill px-3" onClick={() => setShowImport(false)} disabled={importing}>বাতিল</button>
+              <button className="btn btn-sm btn-primary rounded-pill px-4" disabled={importing || !importFile} onClick={async () => {
+                setImporting(true);
+                try {
+                  const res = await importChannelData(profileId, importMonth, importFile);
+                  window.alert(`✅ ইম্পোর্ট সফল!\nমোট রেকর্ড: ${res.total}\nনতুন ইউজার: ${res.created}\nআপডেট করা হয়েছে: ${res.updated}`);
+                  setShowImport(false);
+                  setImportFile(null);
+                  loadChannelData();
+                  loadUserPayments();
+                  load(); // reload stats
+                } catch (err) {
+                  window.alert(err?.response?.data?.message || 'ইম্পোর্ট করতে সমস্যা হয়েছে।');
+                } finally {
+                  setImporting(false);
+                }
+              }}>
+                {importing ? <><span className="spinner-border spinner-border-sm me-2" />প্রসেস হচ্ছে...</> : <><i className="fas fa-upload me-1" />ইম্পোর্ট শুরু করুন</>}
+              </button>
+            </div>
+          </div>
+        </ModalWrap>
+      )}
+
     </div>
   );
 };

@@ -1,4 +1,6 @@
+const XLSX = require("xlsx");
 const pool = require("../utilities/db");
+
 const { initChannelPartnerTables } = require("../utilities/channelPartnerInit");
 const {
   logResellerFinancialChange,
@@ -856,6 +858,107 @@ const getStatement = async (req, res) => {
   }
 };
 
+// ─── Excel Import ──────────────────────────────────────────
+
+const importChannelData = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { resellerId } = req.params;
+    const { month } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    if (!month) {
+      return res.status(400).json({ message: "Month is required" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet);
+
+    if (data.length === 0) {
+      return res.status(400).json({ message: "Excel file is empty" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      let updatedCount = 0;
+      let createdCount = 0;
+
+      for (const row of data) {
+        // Map columns based on user request (Customer Name, Receive Amount)
+        const userName = row["Customer Name"] || row["customer_name"];
+        const receiveAmount = parseAmount(row["Receive Amount"] || row["receive_amount"], 0);
+
+        if (!userName) continue;
+
+        // 1. Find or create user
+        let userResult = await client.query(
+          `SELECT id FROM channel_partner_users WHERE reseller_id = $1 AND user_name = $2`,
+          [resellerId, userName]
+        );
+
+        let userId;
+        if (userResult.rows.length > 0) {
+          userId = userResult.rows[0].id;
+          updatedCount++;
+        } else {
+          const newUser = await client.query(
+            `INSERT INTO channel_partner_users (reseller_id, user_name, status, monthly_rate)
+             VALUES ($1, $2, 'active', $3)
+             RETURNING id`,
+            [resellerId, userName, receiveAmount] // Assuming initial receive amount as monthly rate if new
+          );
+          userId = newUser.rows[0].id;
+          createdCount++;
+        }
+
+        // 2. Upsert payment for the month
+        await client.query(
+          `INSERT INTO channel_user_payments (reseller_id, user_id, month, amount_due, amount_paid, payment_status, payment_date)
+           VALUES ($1, $2, $3, $4, $4, 'paid', NOW())
+           ON CONFLICT (user_id, month) DO UPDATE SET
+             amount_paid = EXCLUDED.amount_paid,
+             amount_due = EXCLUDED.amount_due,
+             payment_status = 'paid',
+             payment_date = NOW(),
+             updated_at = NOW()`,
+          [resellerId, userId, month, receiveAmount]
+        );
+      }
+
+      // 3. Update aggregate count
+      await client.query(
+        `UPDATE resellers SET channel_user_count = (
+          SELECT COUNT(*) FROM channel_partner_users
+          WHERE reseller_id = $1 AND status = 'active'
+        ) WHERE id = $1`,
+        [resellerId]
+      );
+
+      await client.query("COMMIT");
+      res.json({
+        message: "Import successful",
+        created: createdCount,
+        updated: updatedCount,
+        total: data.length
+      });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("channelPartner.importChannelData:", error);
+    res.status(500).json({ message: "Failed to import data: " + error.message });
+  }
+};
+
 module.exports = {
   listUsers,
   addUser,
@@ -873,4 +976,6 @@ module.exports = {
   recordCommissionPayment,
   getCommissionPayments,
   getStatement,
+  importChannelData,
 };
+
