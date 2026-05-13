@@ -5,17 +5,34 @@ let tablesInitialized = false;
 const initChannelPartnerTables = async () => {
   if (tablesInitialized) return;
   try {
-    await pool.query(`
+    const runQuery = async (sql, params = []) => {
+      try {
+        await pool.query(sql, params);
+      } catch (error) {
+        if (
+          error?.code === "42501" ||
+          String(error?.message || "")
+            .toLowerCase()
+            .includes("must be owner")
+        ) {
+          console.warn(`[ChannelPartner] DDL skipped (insufficient privilege): ${sql.substring(0, 50)}...`);
+          return;
+        }
+        throw error;
+      }
+    };
+
+    await runQuery(`
       ALTER TABLE resellers
         ADD COLUMN IF NOT EXISTS profit_share_percentage NUMERIC(5,2) DEFAULT 0
     `);
 
-    await pool.query(`
+    await runQuery(`
       ALTER TABLE resellers
         ADD COLUMN IF NOT EXISTS channel_user_count INTEGER DEFAULT 0
     `);
 
-    await pool.query(`
+    await runQuery(`
       CREATE TABLE IF NOT EXISTS channel_partner_users (
         id SERIAL PRIMARY KEY,
         reseller_id INT NOT NULL,
@@ -29,14 +46,14 @@ const initChannelPartnerTables = async () => {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_cpu_reseller_id ON channel_partner_users (reseller_id)"
     );
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_cpu_status ON channel_partner_users (status)"
     );
 
-    await pool.query(`
+    await runQuery(`
       CREATE TABLE IF NOT EXISTS channel_user_payments (
         id SERIAL PRIMARY KEY,
         reseller_id INT NOT NULL,
@@ -51,17 +68,17 @@ const initChannelPartnerTables = async () => {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_cup_reseller_month ON channel_user_payments (reseller_id, month)"
     );
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_cup_user_month ON channel_user_payments (user_id, month)"
     );
-    await pool.query(
+    await runQuery(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_cup_unique_user_month ON channel_user_payments (user_id, month)"
     );
 
-    await pool.query(`
+    await runQuery(`
       CREATE TABLE IF NOT EXISTS channel_commission_logs (
         id SERIAL PRIMARY KEY,
         reseller_id INT NOT NULL,
@@ -89,11 +106,11 @@ const initChannelPartnerTables = async () => {
         UNIQUE(reseller_id, month)
       )
     `);
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_ccl_reseller_id ON channel_commission_logs (reseller_id)"
     );
 
-    await pool.query(`
+    await runQuery(`
       CREATE TABLE IF NOT EXISTS channel_commission_payments (
         id SERIAL PRIMARY KEY,
         reseller_id INT NOT NULL,
@@ -107,28 +124,16 @@ const initChannelPartnerTables = async () => {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_ccp_reseller_id ON channel_commission_payments (reseller_id)"
     );
-    await pool.query(
+    await runQuery(
       "CREATE INDEX IF NOT EXISTS idx_ccp_log_id ON channel_commission_payments (commission_log_id)"
     );
 
     tablesInitialized = true;
     console.log("[ChannelPartner] tables ready");
   } catch (error) {
-    if (
-      error?.code === "42501" ||
-      String(error?.message || "")
-        .toLowerCase()
-        .includes("must be owner")
-    ) {
-      tablesInitialized = true;
-      console.warn(
-        "[ChannelPartner] init uses existing tables (owner-only DDL skipped)"
-      );
-      return;
-    }
     console.error("[ChannelPartner] init failed:", error.message);
   }
 };
