@@ -15,9 +15,16 @@ const initChannelPartnerTables = async () => {
             .toLowerCase()
             .includes("must be owner")
         ) {
-          console.warn(`[ChannelPartner] DDL skipped (insufficient privilege): ${sql.substring(0, 50)}...`);
+          console.warn(
+            `[ChannelPartner] DDL skipped (insufficient privilege): ${sql.substring(0, 50)}...`,
+          );
           return;
         }
+        // Log the error but don't throw for table creation issues
+        console.error(`[ChannelPartner] DDL error: ${error.message}`);
+        console.error(
+          `[ChannelPartner] Failed SQL: ${sql.substring(0, 100)}...`,
+        );
         throw error;
       }
     };
@@ -47,10 +54,10 @@ const initChannelPartnerTables = async () => {
       )
     `);
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_cpu_reseller_id ON channel_partner_users (reseller_id)"
+      "CREATE INDEX IF NOT EXISTS idx_cpu_reseller_id ON channel_partner_users (reseller_id)",
     );
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_cpu_status ON channel_partner_users (status)"
+      "CREATE INDEX IF NOT EXISTS idx_cpu_status ON channel_partner_users (status)",
     );
 
     await runQuery(`
@@ -69,13 +76,163 @@ const initChannelPartnerTables = async () => {
       )
     `);
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_cup_reseller_month ON channel_user_payments (reseller_id, month)"
+      "CREATE INDEX IF NOT EXISTS idx_cup_reseller_month ON channel_user_payments (reseller_id, month)",
     );
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_cup_user_month ON channel_user_payments (user_id, month)"
+      "CREATE INDEX IF NOT EXISTS idx_cup_user_month ON channel_user_payments (user_id, month)",
     );
     await runQuery(
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_cup_unique_user_month ON channel_user_payments (user_id, month)"
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_cup_unique_user_month ON channel_user_payments (user_id, month)",
+    );
+    await runQuery(
+      `ALTER TABLE channel_user_payments ADD COLUMN IF NOT EXISTS service_period DATE`,
+    );
+    await runQuery(
+      `UPDATE channel_user_payments SET service_period = (month || '-01')::date WHERE service_period IS NULL AND month IS NOT NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_user_payments ADD COLUMN IF NOT EXISTS bill_issued_date TIMESTAMP`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_user_payments ADD COLUMN IF NOT EXISTS billing_status VARCHAR(30) DEFAULT 'deferred'`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_user_payments ADD COLUMN IF NOT EXISTS realized_amount NUMERIC(12,2) DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_user_payments ADD COLUMN IF NOT EXISTS deferred_amount NUMERIC(12,2) DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_user_payments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL`,
+    );
+    await runQuery(
+      `CREATE INDEX IF NOT EXISTS idx_cup_service_period ON channel_user_payments (reseller_id, service_period)`,
+    );
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_partner_advances (
+        id SERIAL PRIMARY KEY,
+        reseller_id INT NOT NULL,
+        user_id INT NULL,
+        advance_month DATE NOT NULL,
+        advance_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        advance_type VARCHAR(40) NOT NULL DEFAULT 'direct_payment',
+        settlement_status VARCHAR(40) NOT NULL DEFAULT 'pending_adjustment',
+        notes TEXT NULL,
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        resolved_by INT NULL,
+        resolved_at TIMESTAMP NULL
+      )
+    `);
+    await runQuery(
+      `CREATE INDEX IF NOT EXISTS idx_cpa_reseller_month ON channel_partner_advances (reseller_id, advance_month)`,
+    );
+    await runQuery(
+      `CREATE INDEX IF NOT EXISTS idx_cpa_status ON channel_partner_advances (settlement_status)`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_partner_advances ADD COLUMN IF NOT EXISTS resolved_by INT NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_partner_advances ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_partner_advances ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
+    );
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_adjustment_audit (
+        id SERIAL PRIMARY KEY,
+        reseller_id INT NOT NULL,
+        adjustment_month DATE NOT NULL,
+        adjustment_type VARCHAR(50) NOT NULL,
+        adjustment_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        reason TEXT NULL,
+        created_by INT NULL,
+        related_user_id INT NULL,
+        related_payment_id INT NULL,
+        notes TEXT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await runQuery(
+      `CREATE INDEX IF NOT EXISTS idx_channel_adjustment_audit_reseller_month ON channel_adjustment_audit (reseller_id, adjustment_month)`,
+    );
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_settlement_state_machine (
+        id SERIAL PRIMARY KEY,
+        reseller_id INT NOT NULL,
+        settlement_month DATE NOT NULL,
+        current_state VARCHAR(40) NOT NULL DEFAULT 'draft',
+        locked_at TIMESTAMP NULL,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(reseller_id, settlement_month)
+      )
+    `);
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS billing_reconciliation_logs (
+        id SERIAL PRIMARY KEY,
+        reseller_id INT NOT NULL,
+        reconciliation_month DATE NOT NULL,
+        total_collected NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_realized NUMERIC(12,2) NOT NULL DEFAULT 0,
+        total_deferred NUMERIC(12,2) NOT NULL DEFAULT 0,
+        gross_commission NUMERIC(12,2) NOT NULL DEFAULT 0,
+        partner_advances NUMERIC(12,2) NOT NULL DEFAULT 0,
+        net_commission NUMERIC(12,2) NOT NULL DEFAULT 0,
+        reconciliation_status VARCHAR(40) NOT NULL DEFAULT 'pending',
+        initiated_by INT NULL,
+        approved_by INT NULL,
+        approved_at TIMESTAMP NULL,
+        rejection_reason TEXT NULL,
+        snapshot_data JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(reseller_id, reconciliation_month)
+      )
+    `);
+    await runQuery(
+      `CREATE INDEX IF NOT EXISTS idx_brl_reseller_month ON billing_reconciliation_logs (reseller_id, reconciliation_month)`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS reconciliation_month DATE`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS total_collected NUMERIC(12,2) NOT NULL DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS total_realized NUMERIC(12,2) NOT NULL DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS total_deferred NUMERIC(12,2) NOT NULL DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS gross_commission NUMERIC(12,2) NOT NULL DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS partner_advances NUMERIC(12,2) NOT NULL DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS net_commission NUMERIC(12,2) NOT NULL DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS initiated_by INT NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS approved_by INT NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS rejection_reason TEXT NULL`,
+    );
+    await runQuery(
+      `ALTER TABLE billing_reconciliation_logs ADD COLUMN IF NOT EXISTS snapshot_data JSONB DEFAULT '{}'::jsonb`,
     );
 
     await runQuery(`
@@ -107,7 +264,7 @@ const initChannelPartnerTables = async () => {
       )
     `);
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_ccl_reseller_id ON channel_commission_logs (reseller_id)"
+      "CREATE INDEX IF NOT EXISTS idx_ccl_reseller_id ON channel_commission_logs (reseller_id)",
     );
 
     await runQuery(`
@@ -125,10 +282,10 @@ const initChannelPartnerTables = async () => {
       )
     `);
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_ccp_reseller_id ON channel_commission_payments (reseller_id)"
+      "CREATE INDEX IF NOT EXISTS idx_ccp_reseller_id ON channel_commission_payments (reseller_id)",
     );
     await runQuery(
-      "CREATE INDEX IF NOT EXISTS idx_ccp_log_id ON channel_commission_payments (commission_log_id)"
+      "CREATE INDEX IF NOT EXISTS idx_ccp_log_id ON channel_commission_payments (commission_log_id)",
     );
 
     await runQuery(`
@@ -139,10 +296,42 @@ const initChannelPartnerTables = async () => {
       )
     `);
 
+    const requiredObjects = await pool.query(`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'channel_partner_profile_settings'
+        ) AS has_profile_settings,
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'profit_share_percentage'
+        ) AS has_profit_share_column,
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'resellers' AND column_name = 'channel_user_count'
+        ) AS has_channel_user_count_column
+    `);
+    const flags = requiredObjects.rows[0] || {};
+    if (!flags.has_profile_settings || !flags.has_channel_user_count_column) {
+      throw new Error(
+        `[ChannelPartner] required schema missing after init: ` +
+          `profile_settings=${!!flags.has_profile_settings}, ` +
+          `channel_user_count_column=${!!flags.has_channel_user_count_column}`,
+      );
+    }
+    if (!flags.has_profit_share_column) {
+      console.warn(
+        "[ChannelPartner] optional resellers.profit_share_percentage column missing; using channel_partner_profile_settings as source of truth",
+      );
+    }
+
     tablesInitialized = true;
     console.log("[ChannelPartner] tables ready");
   } catch (error) {
     console.error("[ChannelPartner] init failed:", error.message);
+    console.error("[ChannelPartner] stack:", error.stack);
+    // Don't set tablesInitialized = true on failure, so it can be retried
+    throw error; // Re-throw to let caller handle the error
   }
 };
 

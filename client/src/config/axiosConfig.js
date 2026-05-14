@@ -35,6 +35,15 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Let the browser set multipart boundaries for FormData uploads.
+    // Keeping a manual/default Content-Type can make multer fail with
+    // "Unexpected end of form" because the boundary is missing or stale.
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+      delete config.headers["content-type"];
+    }
+
     return config;
   },
   (error) => {

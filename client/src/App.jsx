@@ -6,6 +6,7 @@ import PrivateRoute from "./components/PrivateRoute";
 import Layout from "./components/Layout";
 import { protectedRouteConfig } from "./routes/routeConfig";
 import { t } from "./i18n";
+import { Toaster } from "react-hot-toast";
 
 const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -109,6 +110,7 @@ function App() {
     <ErrorBoundary>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Suspense fallback={<LoadingSpinner />}>
+          <Toaster position="top-right" reverseOrder={false} />
           <SessionWarning />
           <Routes>
             <Route path="/login" element={<Login />} />

@@ -11,7 +11,10 @@ const {
   toDateOnlyString,
   getOtcAppliedMonthYm,
 } = require("./utils");
-const { joiningDateExpr, hasResellerOtcAppliedMonthColumn } = require("./dbSetup");
+const {
+  joiningDateExpr,
+  hasResellerOtcAppliedMonthColumn,
+} = require("./dbSetup");
 
 const getResellerRecurringMonthlyTotal = (reseller = {}) => {
   const bandwidthTotal =
@@ -30,7 +33,10 @@ const getResellerRecurringMonthlyTotal = (reseller = {}) => {
   return bandwidthTotal + realIpTotal;
 };
 
-const calculateResellerMonthProjectedTotal = (reseller = {}, targetMonthStr = getDhakaMonthYm()) => {
+const calculateResellerMonthProjectedTotal = (
+  reseller = {},
+  targetMonthStr = getDhakaMonthYm(),
+) => {
   const info = monthInfo(targetMonthStr);
   const created = parseYMD(reseller.joining_date || reseller.created_at);
   if (!created) return 0;
@@ -58,7 +64,29 @@ const shouldPauseProjectedBilling = (reseller, targetMonthYm) => {
   return targetMonthYm >= getDhakaMonthYm();
 };
 
-const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, resellerRow = null) => {
+const refreshProjectedBillForCurrentMonth = async (
+  resellerId,
+  targetMonthStr = getDhakaMonthYm(),
+) => {
+  const breakdown = await calculateMonthlyBillBreakdown(
+    resellerId,
+    targetMonthStr,
+  );
+  const total = Math.round(Number(breakdown?.total || 0) * 100) / 100;
+  await pool.query(
+    `UPDATE resellers
+     SET current_projected_bill = $1, last_activity_date = NOW()
+     WHERE id = $2`,
+    [total, resellerId],
+  );
+  return total;
+};
+
+const calculateMonthlyBillBreakdown = async (
+  resellerId,
+  targetMonthStr,
+  resellerRow = null,
+) => {
   const info = monthInfo(targetMonthStr);
   const reseller =
     resellerRow ||
@@ -91,7 +119,8 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
     ).rows?.[0];
 
   if (!reseller) return { items: [], total: 0 };
-  if (shouldPauseProjectedBilling(reseller, info.ym)) return { items: [], total: 0 };
+  if (shouldPauseProjectedBilling(reseller, info.ym))
+    return { items: [], total: 0 };
 
   const created = parseYMD(reseller.joining_date || reseller.created_at);
   if (!created) return { items: [], total: 0 };
@@ -139,13 +168,13 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
       const dateStr = toDateOnlyString(row.effective_date);
       if (!dateStr) continue;
       const rateColMap = {
-        IIG: ['prev_rate_iig', 'rate_iig'],
-        BDIX: ['prev_rate_bdix', 'rate_bdix'],
-        GGC: ['prev_rate_ggc', 'rate_ggc'],
-        FNA: ['prev_rate_fna', 'rate_fna'],
-        CDN: ['prev_rate_cdn', 'rate_cdn'],
-        BCDN: ['prev_rate_bcdn', 'rate_bcdn'],
-        NTTN: ['prev_rate_nttn', 'rate_nttn'],
+        IIG: ["prev_rate_iig", "rate_iig"],
+        BDIX: ["prev_rate_bdix", "rate_bdix"],
+        GGC: ["prev_rate_ggc", "rate_ggc"],
+        FNA: ["prev_rate_fna", "rate_fna"],
+        CDN: ["prev_rate_cdn", "rate_cdn"],
+        BCDN: ["prev_rate_bcdn", "rate_bcdn"],
+        NTTN: ["prev_rate_nttn", "rate_nttn"],
       };
       for (const [bwType, [prevCol, nextCol]] of Object.entries(rateColMap)) {
         if (row[prevCol] != null) {
@@ -156,11 +185,21 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
         }
         const nextRate = parseAmount(row[nextCol], NaN);
         const prevRate = parseAmount(row[prevCol], NaN);
-        if (Number.isFinite(nextRate) && Number.isFinite(prevRate) && nextRate !== prevRate && dateStr <= info.monthEndStr) {
+        if (
+          Number.isFinite(nextRate) &&
+          Number.isFinite(prevRate) &&
+          nextRate !== prevRate &&
+          dateStr <= info.monthEndStr
+        ) {
           if (!rateHistoryByType[bwType]) rateHistoryByType[bwType] = [];
-          const hasExistingHistory = rateHistoryByType[bwType].some((entry) => entry.effective_date === dateStr);
+          const hasExistingHistory = rateHistoryByType[bwType].some(
+            (entry) => entry.effective_date === dateStr,
+          );
           if (!hasExistingHistory) {
-            rateHistoryByType[bwType].push({ rate: nextRate, effective_date: dateStr });
+            rateHistoryByType[bwType].push({
+              rate: nextRate,
+              effective_date: dateStr,
+            });
           }
         }
       }
@@ -223,19 +262,26 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
     const initialBw = parseAmount(workingBw[bwType], 0);
     if (initialBw === 0 && typeChanges.length === 0) continue;
 
-    const rateHistory = (rateHistoryByType[bwType] || []).filter(rh => rh.effective_date >= info.monthStartStr).sort((a, b) => a.effective_date.localeCompare(b.effective_date));
+    const rateHistory = (rateHistoryByType[bwType] || [])
+      .filter((rh) => rh.effective_date >= info.monthStartStr)
+      .sort((a, b) => a.effective_date.localeCompare(b.effective_date));
 
     const allBwHistory = rateHistoryByType[bwType] || [];
     const preMonthRate = (() => {
-      const preEntries = allBwHistory.filter(rh => rh.effective_date < info.monthStartStr).sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+      const preEntries = allBwHistory
+        .filter((rh) => rh.effective_date < info.monthStartStr)
+        .sort((a, b) => b.effective_date.localeCompare(a.effective_date));
       if (preEntries.length > 0) return Number(preEntries[0].rate);
-      const thisMonthLogEntries = Object.entries(rateChangeLogMap[bwType] || {}).filter(([d]) => d >= info.monthStartStr && d <= info.monthEndStr).sort(([a], [b]) => a.localeCompare(b));
+      const thisMonthLogEntries = Object.entries(rateChangeLogMap[bwType] || {})
+        .filter(([d]) => d >= info.monthStartStr && d <= info.monthEndStr)
+        .sort(([a], [b]) => a.localeCompare(b));
       if (thisMonthLogEntries.length > 0) return thisMonthLogEntries[0][1];
       return rate;
     })();
 
     const buildRateSegments = (fromDay, toDay) => {
-      if (rateHistory.length === 0) return [{ fromDay, toDay, segRate: preMonthRate }];
+      if (rateHistory.length === 0)
+        return [{ fromDay, toDay, segRate: preMonthRate }];
       const segs = [];
       let cursor = fromDay;
       let currentRate = preMonthRate;
@@ -245,7 +291,11 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
         const rhDay = rhDate.getDate();
         if (rhDay > toDay) break;
         if (rhDay > cursor) {
-          segs.push({ fromDay: cursor, toDay: rhDay - 1, segRate: currentRate });
+          segs.push({
+            fromDay: cursor,
+            toDay: rhDay - 1,
+            segRate: currentRate,
+          });
           cursor = rhDay;
         }
         currentRate = Number(rh.rate);
@@ -253,7 +303,9 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
       if (cursor <= toDay) {
         segs.push({ fromDay: cursor, toDay, segRate: currentRate });
       }
-      return segs.length > 0 ? segs : [{ fromDay, toDay, segRate: preMonthRate }];
+      return segs.length > 0
+        ? segs
+        : [{ fromDay, toDay, segRate: preMonthRate }];
     };
 
     let cursorDay = info.daysInMonth;
@@ -269,7 +321,10 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
         const rateSegs = buildRateSegments(changeDay, cursorDay);
         for (const rs of rateSegs) {
           const segDuration = rs.toDay - rs.fromDay + 1;
-          const cost = Math.round((rs.segRate / info.daysInMonth) * tempBw * segDuration * 100) / 100;
+          const cost =
+            Math.round(
+              (rs.segRate / info.daysInMonth) * tempBw * segDuration * 100,
+            ) / 100;
           grandTotal += cost;
           items.push({
             desc: bwType,
@@ -278,7 +333,14 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
             days: segDuration,
             total: cost,
             date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.fromDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.toDay))}`,
-            change_type: rateSegs.length > 1 ? 'rate_change' : (change.change_type === "increase" ? 'প্যাকেজ বৃদ্ধি' : change.change_type === "decrease" ? 'প্যাকেজ হ্রাস' : "standard"),
+            change_type:
+              rateSegs.length > 1
+                ? "rate_change"
+                : change.change_type === "increase"
+                  ? "প্যাকেজ বৃদ্ধি"
+                  : change.change_type === "decrease"
+                    ? "প্যাকেজ হ্রাস"
+                    : "standard",
           });
         }
       }
@@ -293,7 +355,10 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
       const rateSegs = buildRateSegments(startDayLimit, cursorDay);
       for (const rs of rateSegs) {
         const segDuration = rs.toDay - rs.fromDay + 1;
-        const cost = Math.round((rs.segRate / info.daysInMonth) * tempBw * segDuration * 100) / 100;
+        const cost =
+          Math.round(
+            (rs.segRate / info.daysInMonth) * tempBw * segDuration * 100,
+          ) / 100;
         grandTotal += cost;
         items.push({
           desc: bwType,
@@ -302,7 +367,7 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
           days: segDuration,
           total: cost,
           date_range: `${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.fromDay))} - ${fmtDayMon(new Date(info.monthStart.getFullYear(), info.monthStart.getMonth(), rs.toDay))}`,
-          change_type: rateSegs.length > 1 ? 'rate_change' : 'standard',
+          change_type: rateSegs.length > 1 ? "rate_change" : "standard",
         });
       }
     }
@@ -313,7 +378,10 @@ const calculateMonthlyBillBreakdown = async (resellerId, targetMonthStr, reselle
   if (realIpCount > 0) {
     const duration = info.daysInMonth - startDayLimit + 1;
     if (duration > 0) {
-      const cost = Math.round(((realIpCount * realIpPrice) / info.daysInMonth) * duration * 100) / 100;
+      const cost =
+        Math.round(
+          ((realIpCount * realIpPrice) / info.daysInMonth) * duration * 100,
+        ) / 100;
       grandTotal += cost;
       items.push({
         desc: "Real IP",
@@ -350,4 +418,5 @@ module.exports = {
   getResellerRecurringMonthlyTotal,
   calculateResellerMonthProjectedTotal,
   calculateMonthlyBillBreakdown,
+  refreshProjectedBillForCurrentMonth,
 };

@@ -1,47 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend } from 'chart.js';
+import React, { useState, useEffect } from "react";
+import { useParams, useSearchParams, Link } from "react-router-dom";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Tooltip,
+  Legend,
+} from "chart.js";
 
 // Custom hooks
-import { useResellerProfile } from '../hooks/useResellerProfile';
-import { useChannelPartner } from '../hooks/useChannelPartner';
+import { useResellerProfile } from "../hooks/useResellerProfile";
+import { useChannelPartner } from "../hooks/useChannelPartner";
 
 // Core components
-import ProfileHeader from '../components/ResellerProfile/ProfileHeader';
-import ProfileStats from '../components/ResellerProfile/ProfileStats';
-import ProfileDetails from '../components/ResellerProfile/ProfileDetails';
+import ProfileHeader from "../components/ResellerProfile/ProfileHeader";
+import ProfileStats from "../components/ResellerProfile/ProfileStats";
+import ProfileDetails from "../components/ResellerProfile/ProfileDetails";
 
 // Tab components
-import BandwidthTab from '../components/ResellerProfile/Tabs/BandwidthTab';
-import StatementTab from '../components/ResellerProfile/Tabs/StatementTab';
-import RequestsTab from '../components/ResellerProfile/Tabs/RequestsTab';
+import BandwidthTab from "../components/ResellerProfile/Tabs/BandwidthTab";
+import StatementTab from "../components/ResellerProfile/Tabs/StatementTab";
+import RequestsTab from "../components/ResellerProfile/Tabs/RequestsTab";
 
 // Channel Partner components
-import UsersTab from '../components/ResellerProfile/ChannelPartner/UsersTab';
-import CollectionTab from '../components/ResellerProfile/ChannelPartner/CollectionTab';
-import CommissionTab from '../components/ResellerProfile/ChannelPartner/CommissionTab';
-import CPStatementTab from '../components/ResellerProfile/ChannelPartner/CPStatementTab';
+import UsersTab from "../components/ResellerProfile/ChannelPartner/UsersTab";
+import CollectionTab from "../components/ResellerProfile/ChannelPartner/CollectionTab";
+import CommissionTab from "../components/ResellerProfile/ChannelPartner/CommissionTab";
+import CPStatementTab from "../components/ResellerProfile/ChannelPartner/CPStatementTab";
 
 // Modal components
-import PaymentModal from '../components/ResellerProfile/Modals/PaymentModal';
-import DiscountModal from '../components/ResellerProfile/Modals/DiscountModal';
-import EditProfileModal from '../components/ResellerProfile/Modals/EditProfileModal';
-import RateChangeModal from '../components/ResellerProfile/Modals/RateChangeModal';
-import BillHistoryModal from '../components/ResellerProfile/Modals/BillHistoryModal';
-import AddUserModal from '../components/ResellerProfile/Modals/AddUserModal';
-import EditUserModal from '../components/ResellerProfile/Modals/EditUserModal';
-import CommissionPaymentModal from '../components/ResellerProfile/Modals/CommissionPaymentModal';
-import AdjustmentModal from '../components/ResellerProfile/Modals/AdjustmentModal';
-import ImportModal from '../components/ResellerProfile/Modals/ImportModal';
+import PaymentModal from "../components/ResellerProfile/Modals/PaymentModal";
+import DiscountModal from "../components/ResellerProfile/Modals/DiscountModal";
+import EditProfileModal from "../components/ResellerProfile/Modals/EditProfileModal";
+import RateChangeModal from "../components/ResellerProfile/Modals/RateChangeModal";
+import BillHistoryModal from "../components/ResellerProfile/Modals/BillHistoryModal";
+import AddUserModal from "../components/ResellerProfile/Modals/AddUserModal";
+import EditUserModal from "../components/ResellerProfile/Modals/EditUserModal";
+import CommissionPaymentModal from "../components/ResellerProfile/Modals/CommissionPaymentModal";
+import AdjustmentModal from "../components/ResellerProfile/Modals/AdjustmentModal";
+import ImportModal from "../components/ResellerProfile/Modals/ImportModal";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Tooltip,
+  Legend,
+);
 
 const ResellerProfile = () => {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const profileId = id || searchParams.get('id');
+  const profileId = id || searchParams.get("id");
 
-  const [activeTab, setActiveTab] = useState('bandwidth');
+  const [activeTab, setActiveTab] = useState("bandwidth");
 
   // Use custom hooks
   const {
@@ -49,52 +64,78 @@ const ResellerProfile = () => {
     loadError,
     saving,
     load,
-    showPay, setShowPay,
-    showDiscount, setShowDiscount,
-    showEdit, setShowEdit,
-    showBillHistory, setShowBillHistory,
-    showRateChange, setShowRateChange,
-    paymentAmount, setPaymentAmount,
-    paymentDate, setPaymentDate,
-    paymentMethod, setPaymentMethod,
-    paymentNote, setPaymentNote,
+    showPay,
+    setShowPay,
+    showDiscount,
+    setShowDiscount,
+    showEdit,
+    setShowEdit,
+    showBillHistory,
+    setShowBillHistory,
+    showRateChange,
+    setShowRateChange,
+    paymentAmount,
+    setPaymentAmount,
+    paymentDate,
+    setPaymentDate,
+    paymentMethod,
+    setPaymentMethod,
+    paymentNote,
+    setPaymentNote,
     submitPayment,
-    discountAmount, setDiscountAmount,
-    discountDate, setDiscountDate,
-    discountNote, setDiscountNote,
+    discountAmount,
+    setDiscountAmount,
+    discountDate,
+    setDiscountDate,
+    discountNote,
+    setDiscountNote,
     submitDiscount,
-    editForm, setEditForm,
+    editForm,
+    setEditForm,
     saveProfile,
-    rateChangeForm, setRateChangeForm,
+    rateChangeForm,
+    setRateChangeForm,
     rateChangeSaving,
     rateChangeLogs,
     openRateChangeModal,
-    submitRateChange
+    submitRateChange,
   } = useResellerProfile(profileId);
 
-  const isChannel = data?.reseller?.partner_type === 'channel_partner';
+  const isChannel = data?.reseller?.partner_type === "channel_partner";
 
   const {
     cpUsers,
-    cpMonth, setCpMonth,
+    cpMonth,
+    setCpMonth,
     cpUserPayments,
     cpCommission,
     cpHistory,
     cpStatement,
-    cpUserSearch, setCpUserSearch,
+    cpUserSearch,
+    setCpUserSearch,
     loadChannelData,
     loadUserPayments,
-    showAddUser, setShowAddUser,
-    showEditUser, setShowEditUser,
-    showCommissionPay, setShowCommissionPay,
-    showAdjust, setShowAdjust,
-    showImport, setShowImport,
-    newUser, setNewUser,
-    commPayForm, setCommPayForm,
-    adjForm, setAdjForm,
+    showAddUser,
+    setShowAddUser,
+    showEditUser,
+    setShowEditUser,
+    showCommissionPay,
+    setShowCommissionPay,
+    showAdjust,
+    setShowAdjust,
+    showImport,
+    setShowImport,
+    newUser,
+    setNewUser,
+    commPayForm,
+    setCommPayForm,
+    adjForm,
+    setAdjForm,
     importing,
-    importFile, setImportFile,
-    importMonth, setImportMonth,
+    importFile,
+    setImportFile,
+    importMonth,
+    setImportMonth,
     handleAddUser,
     handleEditUser,
     handleDeleteUser,
@@ -105,13 +146,20 @@ const ResellerProfile = () => {
     handleCommissionPayment,
     handleAdjustment,
     handleFinalize,
-    handleImport
+    handleImport,
+    handleDownloadReport,
   } = useChannelPartner(profileId, isChannel);
 
   // Auto-switch tab for channel partners
   useEffect(() => {
-    if (data && data.reseller?.partner_type === 'channel_partner' && activeTab === 'bandwidth') {
-      setActiveTab(data.permissions?.can_view_financials ? 'cp_users' : 'requests');
+    if (
+      data &&
+      data.reseller?.partner_type === "channel_partner" &&
+      activeTab === "bandwidth"
+    ) {
+      setActiveTab(
+        data.permissions?.can_view_financials ? "cp_users" : "requests",
+      );
     }
   }, [data, activeTab]);
 
@@ -163,11 +211,11 @@ const ResellerProfile = () => {
           <div className="card">
             <div className="card-header border-0 bg-transparent p-3 d-flex justify-content-between align-items-center">
               <ul className="nav nav-pills card-header-pills flex-wrap">
-                {reseller.partner_type !== 'channel_partner' && (
+                {reseller.partner_type !== "channel_partner" && (
                   <li className="nav-item">
                     <button
-                      className={`nav-link btn-sm py-1 px-3 ${activeTab === 'bandwidth' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('bandwidth')}
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "bandwidth" ? "active" : ""}`}
+                      onClick={() => setActiveTab("bandwidth")}
                     >
                       Bandwidth
                     </button>
@@ -176,8 +224,8 @@ const ResellerProfile = () => {
                 {isChannel && (
                   <li className="nav-item">
                     <button
-                      className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_users' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('cp_users')}
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_users" ? "active" : ""}`}
+                      onClick={() => setActiveTab("cp_users")}
                     >
                       ইউজার
                     </button>
@@ -186,8 +234,8 @@ const ResellerProfile = () => {
                 {isChannel && can.can_view_financials && (
                   <li className="nav-item">
                     <button
-                      className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_collection' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('cp_collection')}
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_collection" ? "active" : ""}`}
+                      onClick={() => setActiveTab("cp_collection")}
                     >
                       কালেকশন
                     </button>
@@ -196,8 +244,8 @@ const ResellerProfile = () => {
                 {isChannel && can.can_view_financials && (
                   <li className="nav-item">
                     <button
-                      className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_commission' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('cp_commission')}
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_commission" ? "active" : ""}`}
+                      onClick={() => setActiveTab("cp_commission")}
                     >
                       কমিশন
                     </button>
@@ -206,8 +254,8 @@ const ResellerProfile = () => {
                 {isChannel && can.can_view_financials && (
                   <li className="nav-item">
                     <button
-                      className={`nav-link btn-sm py-1 px-3 ${activeTab === 'cp_statement' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('cp_statement')}
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_statement" ? "active" : ""}`}
+                      onClick={() => setActiveTab("cp_statement")}
                     >
                       স্টেটমেন্ট
                     </button>
@@ -216,8 +264,8 @@ const ResellerProfile = () => {
                 {!isChannel && can.can_view_financials && (
                   <li className="nav-item">
                     <button
-                      className={`nav-link btn-sm py-1 px-3 ${activeTab === 'statement' ? 'active' : ''}`}
-                      onClick={() => setActiveTab('statement')}
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "statement" ? "active" : ""}`}
+                      onClick={() => setActiveTab("statement")}
                     >
                       Statement
                     </button>
@@ -225,22 +273,26 @@ const ResellerProfile = () => {
                 )}
                 <li className="nav-item">
                   <button
-                    className={`nav-link btn-sm py-1 px-3 ${activeTab === 'requests' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('requests')}
+                    className={`nav-link btn-sm py-1 px-3 ${activeTab === "requests" ? "active" : ""}`}
+                    onClick={() => setActiveTab("requests")}
                   >
                     Requests
                   </button>
                 </li>
               </ul>
               {can.can_view_financials && (
-                <Link to={`/billing-logs?reseller_id=${reseller.id}`} className="btn btn-xs btn-outline-primary rounded-pill px-2" style={{ fontSize: 11 }}>
+                <Link
+                  to={`/billing-logs?reseller_id=${reseller.id}`}
+                  className="btn btn-xs btn-outline-primary rounded-pill px-2"
+                  style={{ fontSize: 11 }}
+                >
                   View All
                 </Link>
               )}
             </div>
 
             <div className="card-body p-0">
-              {activeTab === 'bandwidth' && (
+              {activeTab === "bandwidth" && (
                 <BandwidthTab
                   reseller={reseller}
                   can={can}
@@ -249,17 +301,23 @@ const ResellerProfile = () => {
                 />
               )}
 
-              {activeTab === 'statement' && can.can_view_financials && (
+              {activeTab === "statement" && can.can_view_financials && (
                 <StatementTab statementItems={statementItems} />
               )}
 
-              {activeTab === 'cp_users' && isChannel && (
+              {activeTab === "cp_users" && isChannel && (
                 <UsersTab
                   cpUsers={cpUsers}
                   cpUserSearch={cpUserSearch}
                   setCpUserSearch={setCpUserSearch}
                   onAddUser={() => {
-                    setNewUser({ user_name: '', user_id_code: '', phone: '', package_name: '', monthly_rate: '' });
+                    setNewUser({
+                      user_name: "",
+                      user_id_code: "",
+                      phone: "",
+                      package_name: "",
+                      monthly_rate: "",
+                    });
                     setShowAddUser(true);
                   }}
                   onEditUser={(user) => setShowEditUser(user)}
@@ -267,7 +325,7 @@ const ResellerProfile = () => {
                 />
               )}
 
-              {activeTab === 'cp_collection' && isChannel && (
+              {activeTab === "cp_collection" && isChannel && (
                 <CollectionTab
                   cpUserPayments={cpUserPayments}
                   cpMonth={cpMonth}
@@ -279,16 +337,27 @@ const ResellerProfile = () => {
                 />
               )}
 
-              {activeTab === 'cp_commission' && isChannel && (
+              {activeTab === "cp_commission" && isChannel && (
                 <CommissionTab
                   cpHistory={cpHistory}
                   onGenerateCommission={handleGenerateCommission}
-                  onCommissionPayment={() => {
-                    setCommPayForm({ amount: '', payment_date: paymentDate, payment_method: 'Cash', reference_no: '', note: '' });
+                  onCommissionPayment={(log) => {
+                    setCommPayForm({
+                      commission_log_id: log?.id || null,
+                      commission_month: log?.month || "",
+                      closing_balance: Number(log?.closing_balance || 0),
+                      amount: log?.closing_balance
+                        ? String(Number(log.closing_balance || 0))
+                        : "",
+                      payment_date: paymentDate,
+                      payment_method: "Cash",
+                      reference_no: "",
+                      note: "",
+                    });
                     setShowCommissionPay(true);
                   }}
                   onAdjustment={(log) => {
-                    setAdjForm({ type: 'adjustment', amount: '', note: '' });
+                    setAdjForm({ type: "adjustment", amount: "", note: "" });
                     setShowAdjust(log);
                   }}
                   onFinalize={handleFinalize}
@@ -296,13 +365,11 @@ const ResellerProfile = () => {
                 />
               )}
 
-              {activeTab === 'cp_statement' && isChannel && (
+              {activeTab === "cp_statement" && isChannel && (
                 <CPStatementTab cpStatement={cpStatement} />
               )}
 
-              {activeTab === 'requests' && (
-                <RequestsTab requests={requests} />
-              )}
+              {activeTab === "requests" && <RequestsTab requests={requests} />}
             </div>
           </div>
         </div>

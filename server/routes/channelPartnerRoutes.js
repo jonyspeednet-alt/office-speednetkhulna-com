@@ -6,6 +6,7 @@ const {
   requireAnyPermission,
 } = require("../middleware/checkPermission");
 const { upload } = require("../middleware/uploadMiddleware");
+const pool = require("../utilities/db");
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -36,7 +37,7 @@ router.post(
   "/:resellerId/import-user-list",
   upload.single("file"),
   canFinancials,
-  controller.importChannelData
+  controller.importChannelData,
 );
 
 // Partner Advances Excel Import
@@ -44,77 +45,80 @@ router.post(
   "/:resellerId/import-partner-advances",
   upload.single("file"),
   canFinancials,
-  controller.importPartnerAdvances
+  controller.importPartnerAdvances,
 );
 
 // User payment collection tracking
 router.get(
   "/:resellerId/user-payments",
   canFinancials,
-  controller.getUserPayments
+  controller.getUserPayments,
 );
 router.post(
   "/:resellerId/user-payments/init",
   canFinancials,
-  controller.initMonthlyPayments
+  controller.initMonthlyPayments,
 );
 
 // ============================================================================
 // Phase 4: Reconciliation Workflow - Apply lock middleware
 // ============================================================================
 
-const { checkReconciliationLock, checkReconciliationModifiable } = require('../middleware/reconciliationLock');
+const {
+  checkReconciliationLock,
+  checkReconciliationModifiable,
+} = require("../middleware/reconciliationLock");
 
 router.post(
   "/:resellerId/user-payments/record",
   checkReconciliationLock,
   canFinancials,
-  controller.recordUserPayment
+  controller.recordUserPayment,
 );
 router.post(
   "/:resellerId/user-payments/bulk",
   checkReconciliationLock,
   canFinancials,
-  controller.bulkRecordPayments
+  controller.bulkRecordPayments,
 );
 
 // Commission
 router.get(
   "/:resellerId/commission-summary",
   canFinancials,
-  controller.getCommissionSummary
+  controller.getCommissionSummary,
 );
 router.post(
   "/:resellerId/commission-generate",
   canFinancials,
-  controller.generateCommission
+  controller.generateCommission,
 );
 router.patch(
   "/:resellerId/commission/:logId/adjust",
   canFinancials,
-  controller.adjustCommission
+  controller.adjustCommission,
 );
 router.patch(
   "/:resellerId/commission/:logId/finalize",
   canFinancials,
-  controller.finalizeCommission
+  controller.finalizeCommission,
 );
 router.get(
   "/:resellerId/commission-history",
   canFinancials,
-  controller.getCommissionHistory
+  controller.getCommissionHistory,
 );
 
 // Commission payments (to partner)
 router.post(
   "/:resellerId/commission-payments",
   canFinancials,
-  controller.recordCommissionPayment
+  controller.recordCommissionPayment,
 );
 router.get(
   "/:resellerId/commission-payments",
   canFinancials,
-  controller.getCommissionPayments
+  controller.getCommissionPayments,
 );
 
 // Statement
@@ -139,7 +143,8 @@ router.post(
 
       if (!user_id || !advance_amount || !advance_type) {
         return res.status(400).json({
-          error: "Missing required fields: user_id, advance_amount, advance_type"
+          error:
+            "Missing required fields: user_id, advance_amount, advance_type",
         });
       }
 
@@ -153,19 +158,19 @@ router.post(
         parseFloat(advance_amount),
         advance_type,
         req.user.id,
-        notes || null
+        notes || null,
       );
 
       res.status(201).json({
         success: true,
         data: advance,
-        message: "Partner advance recorded successfully"
+        message: "Partner advance recorded successfully",
       });
     } catch (error) {
       console.error("[PartnerAdvances] Error:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.post(
@@ -179,51 +184,47 @@ router.post(
 
       if (!Array.isArray(advances) || advances.length === 0) {
         return res.status(400).json({
-          error: "advances must be a non-empty array"
+          error: "advances must be a non-empty array",
         });
       }
 
       const createdAdvances = await PartnerAdvanceManager.recordBulkAdvances(
         parseInt(resellerId),
         advances,
-        req.user.id
+        req.user.id,
       );
 
       res.status(201).json({
         success: true,
         data: createdAdvances,
         count: createdAdvances.length,
-        message: `${createdAdvances.length} partner advances recorded`
+        message: `${createdAdvances.length} partner advances recorded`,
       });
     } catch (error) {
       console.error("[PartnerAdvances] Bulk error:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
-router.get(
-  "/:resellerId/advances/pending",
-  canFinancials,
-  async (req, res) => {
-    try {
-      const { resellerId } = req.params;
-      const advances = await PartnerAdvanceManager.getPendingAdvances(
-        parseInt(resellerId),
-        "pending_adjustment"
-      );
+router.get("/:resellerId/advances/pending", canFinancials, async (req, res) => {
+  try {
+    const { resellerId } = req.params;
+    const advances = await PartnerAdvanceManager.getPendingAdvances(
+      parseInt(resellerId),
+      "pending_adjustment",
+    );
 
-      res.status(200).json({
-        success: true,
-        data: advances,
-        count: advances.length
-      });
-    } catch (error) {
-      console.error("[PartnerAdvances] Error getting pending:", error.message);
-      res.status(500).json({ error: error.message });
-    }
+    res.status(200).json({
+      success: true,
+      data: advances,
+      count: advances.length,
+    });
+  } catch (error) {
+    console.error("[PartnerAdvances] Error getting pending:", error.message);
+    res.status(500).json({ error: error.message });
   }
-);
+});
 
 router.patch(
   "/:resellerId/advances/:advanceId/apply",
@@ -233,19 +234,19 @@ router.patch(
       const { advanceId } = req.params;
       const updated = await PartnerAdvanceManager.applyAdvanceAdjustment(
         parseInt(advanceId),
-        req.user.id
+        req.user.id,
       );
 
       res.status(200).json({
         success: true,
         data: updated,
-        message: "Partner advance applied to settlement"
+        message: "Partner advance applied to settlement",
       });
     } catch (error) {
       console.error("[PartnerAdvances] Error applying:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.patch(
@@ -263,19 +264,19 @@ router.patch(
       const updated = await PartnerAdvanceManager.disputeAdvance(
         parseInt(advanceId),
         req.user.id,
-        reason
+        reason,
       );
 
       res.status(200).json({
         success: true,
         data: updated,
-        message: "Partner advance marked as disputed"
+        message: "Partner advance marked as disputed",
       });
     } catch (error) {
       console.error("[PartnerAdvances] Error disputing:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.patch(
@@ -293,31 +294,28 @@ router.patch(
       const updated = await PartnerAdvanceManager.reverseAdvance(
         parseInt(advanceId),
         req.user.id,
-        reason
+        reason,
       );
 
       res.status(200).json({
         success: true,
         data: updated,
-        message: "Partner advance reversed"
+        message: "Partner advance reversed",
       });
     } catch (error) {
       console.error("[PartnerAdvances] Error reversing:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
-router.get(
-  "/:resellerId/advances/history",
-  canFinancials,
-  async (req, res) => {
-    try {
-      const { resellerId } = req.params;
-      const { month, status } = req.query;
+router.get("/:resellerId/advances/history", canFinancials, async (req, res) => {
+  try {
+    const { resellerId } = req.params;
+    const { month, status } = req.query;
 
-      let query = `
-        SELECT 
+    let query = `
+        SELECT
           cpa.id,
           cpa.user_id,
           cpu.user_name,
@@ -335,48 +333,50 @@ router.get(
         WHERE cpa.reseller_id = $1
       `;
 
-      const params = [parseInt(resellerId)];
-      let paramIndex = 2;
+    const params = [parseInt(resellerId)];
+    let paramIndex = 2;
 
-      if (month) {
-        query += ` AND cpa.advance_month = TO_DATE($${paramIndex} || '-01', 'YYYY-MM-DD')`;
-        params.push(month);
-        paramIndex++;
-      }
-
-      if (status) {
-        query += ` AND cpa.settlement_status = $${paramIndex}`;
-        params.push(status);
-        paramIndex++;
-      }
-
-      query += ` ORDER BY cpa.created_at DESC LIMIT 100`;
-
-      const result = await pool.query(query, params);
-
-      const totalResult = await pool.query(
-        `SELECT COALESCE(SUM(advance_amount), 0) AS total
-         FROM channel_partner_advances
-         WHERE reseller_id = $1 ${month ? `AND advance_month = TO_DATE($2 || '-01', 'YYYY-MM-DD')` : ''}
-         ${status ? `AND settlement_status = $${month ? 3 : 2}` : ''}`,
-        month && status ? [parseInt(resellerId), month, status] :
-          month ? [parseInt(resellerId), month] :
-            status ? [parseInt(resellerId), status] :
-              [parseInt(resellerId)]
-      );
-
-      res.status(200).json({
-        success: true,
-        data: result.rows,
-        count: result.rows.length,
-        total_amount: Number(totalResult.rows[0].total)
-      });
-    } catch (error) {
-      console.error("[PartnerAdvances] Error getting history:", error.message);
-      res.status(500).json({ error: error.message });
+    if (month) {
+      query += ` AND cpa.advance_month = TO_DATE($${paramIndex} || '-01', 'YYYY-MM-DD')`;
+      params.push(month);
+      paramIndex++;
     }
+
+    if (status) {
+      query += ` AND cpa.settlement_status = $${paramIndex}`;
+      params.push(status);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY cpa.created_at DESC LIMIT 100`;
+
+    const result = await pool.query(query, params);
+
+    const totalResult = await pool.query(
+      `SELECT COALESCE(SUM(advance_amount), 0) AS total
+         FROM channel_partner_advances
+         WHERE reseller_id = $1 ${month ? `AND advance_month = TO_DATE($2 || '-01', 'YYYY-MM-DD')` : ""}
+         ${status ? `AND settlement_status = $${month ? 3 : 2}` : ""}`,
+      month && status
+        ? [parseInt(resellerId), month, status]
+        : month
+          ? [parseInt(resellerId), month]
+          : status
+            ? [parseInt(resellerId), status]
+            : [parseInt(resellerId)],
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result.rows,
+      count: result.rows.length,
+      total_amount: Number(totalResult.rows[0].total),
+    });
+  } catch (error) {
+    console.error("[PartnerAdvances] Error getting history:", error.message);
+    res.status(500).json({ error: error.message });
   }
-);
+});
 
 // Reconciliation (Phase 1 - Old endpoints, kept for backward compatibility)
 router.post(
@@ -389,7 +389,7 @@ router.post(
 
       if (!reconciliation_period) {
         return res.status(400).json({
-          error: "reconciliation_period is required (YYYY-MM-01 format)"
+          error: "reconciliation_period is required (YYYY-MM-01 format)",
         });
       }
 
@@ -397,19 +397,19 @@ router.post(
       const reconciliation = await BillingReconciliation.initiateReconciliation(
         parseInt(resellerId),
         period,
-        req.user.id
+        req.user.id,
       );
 
       res.status(201).json({
         success: true,
         data: reconciliation,
-        message: "Reconciliation initiated"
+        message: "Reconciliation initiated",
       });
     } catch (error) {
       console.error("[Reconciliation] Error initiating:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.get(
@@ -419,18 +419,18 @@ router.get(
     try {
       const { reconciliationLogId } = req.params;
       const status = await BillingReconciliation.getReconciliationStatus(
-        parseInt(reconciliationLogId)
+        parseInt(reconciliationLogId),
       );
 
       res.status(200).json({
         success: true,
-        data: status
+        data: status,
       });
     } catch (error) {
       console.error("[Reconciliation] Error getting status:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.patch(
@@ -441,19 +441,19 @@ router.patch(
       const { reconciliationLogId } = req.params;
       const reconciliation = await BillingReconciliation.approveReconciliation(
         parseInt(reconciliationLogId),
-        req.user.id
+        req.user.id,
       );
 
       res.status(200).json({
         success: true,
         data: reconciliation,
-        message: "Reconciliation approved and finalized"
+        message: "Reconciliation approved and finalized",
       });
     } catch (error) {
       console.error("[Reconciliation] Error approving:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.get(
@@ -466,18 +466,18 @@ router.get(
 
       const report = await BillingReconciliation.getReconciliationReport(
         parseInt(resellerId),
-        periodDate
+        periodDate,
       );
 
       res.status(200).json({
         success: true,
-        data: report
+        data: report,
       });
     } catch (error) {
       console.error("[Reconciliation] Error getting report:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 router.get(
@@ -490,7 +490,7 @@ router.get(
 
       const statement = await BillingReconciliation.getReconciliationReport(
         parseInt(resellerId),
-        periodDate
+        periodDate,
       );
 
       const format = req.query.format || "json";
@@ -499,22 +499,22 @@ router.get(
         res.status(200).json({
           success: true,
           data: statement,
-          format: "json"
+          format: "json",
         });
       } else if (format === "pdf") {
         res.status(501).json({
-          error: "PDF export not yet implemented"
+          error: "PDF export not yet implemented",
         });
       } else {
         res.status(400).json({
-          error: "format must be json or pdf"
+          error: "format must be json or pdf",
         });
       }
     } catch (error) {
       console.error("[Settlement] Error getting statement:", error.message);
       res.status(500).json({ error: error.message });
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -525,39 +525,39 @@ router.get(
 router.post(
   "/:resellerId/reconciliation/initiate",
   canFinancials,
-  controller.initiateReconciliation
+  controller.initiateReconciliation,
 );
 
 router.get(
   "/:resellerId/reconciliation/list",
   canFinancials,
-  controller.getReconciliations
+  controller.getReconciliations,
 );
 
 router.get(
   "/:resellerId/reconciliation/:reconciliationId",
   canFinancials,
-  controller.getReconciliationDetails
+  controller.getReconciliationDetails,
 );
 
 router.post(
   "/:resellerId/reconciliation/:reconciliationId/approve",
   checkReconciliationModifiable,
   canFinancials,
-  controller.approveReconciliation
+  controller.approveReconciliation,
 );
 
 router.post(
   "/:resellerId/reconciliation/:reconciliationId/reject",
   checkReconciliationModifiable,
   canFinancials,
-  controller.rejectReconciliation
+  controller.rejectReconciliation,
 );
 
 router.get(
   "/:resellerId/reconciliation/:reconciliationId/report",
   canFinancials,
-  controller.downloadReconciliationReport
+  controller.downloadReconciliationReport,
 );
 
 module.exports = router;

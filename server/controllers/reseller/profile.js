@@ -5,9 +5,7 @@ const {
   getReqMeta,
   logResellerFinancialChange,
 } = require("../../utilities/resellerFinancialAudit");
-const {
-  calculateResellerMonthProjectedTotal,
-} = require("./service");
+const { calculateResellerMonthProjectedTotal } = require("./service");
 const {
   normalizePartnerType,
   canViewResellerFinancials,
@@ -28,33 +26,45 @@ const {
   detectChannelPartnerColumns,
   hasChannelPartnerColumns,
 } = require("./dbSetup");
-const { refreshProjectedBillForCurrentMonth, invalidateMonthlySummaryCache } = require("./billing");
 
 const listResellers = async (req, res) => {
   try {
     await initialize();
     const canViewFinancials = canViewResellerFinancials(req.user);
     const search = (req.query.search || "").trim();
-    const partnerTypeFilter = normalizePartnerType(req.query.partner_type || "");
-    const rawStatus = String(req.query.status || "active").trim().toLowerCase();
-    const statusFilter = ["active", "inactive", "suspended", "all"].includes(rawStatus) ? rawStatus : "active";
+    const partnerTypeFilter = normalizePartnerType(
+      req.query.partner_type || "",
+    );
+    const rawStatus = String(req.query.status || "active")
+      .trim()
+      .toLowerCase();
+    const statusFilter = ["active", "inactive", "suspended", "all"].includes(
+      rawStatus,
+    )
+      ? rawStatus
+      : "active";
     const params = [];
     const whereParts = [];
 
     if (search) {
       params.push(`%${search}%`);
-      whereParts.push(`(COALESCE(r.reseller_name, r.company_name) ILIKE $${params.length} OR r.user_id ILIKE $${params.length} OR r.contact_no ILIKE $${params.length})`);
+      whereParts.push(
+        `(COALESCE(r.reseller_name, r.company_name) ILIKE $${params.length} OR r.user_id ILIKE $${params.length} OR r.contact_no ILIKE $${params.length})`,
+      );
     }
 
     if (statusFilter !== "all") {
       params.push(statusFilter);
-      whereParts.push(`LOWER(COALESCE(r.status, 'active')) = $${params.length}`);
+      whereParts.push(
+        `LOWER(COALESCE(r.status, 'active')) = $${params.length}`,
+      );
     }
     if (partnerTypeFilter) {
       params.push(partnerTypeFilter);
-      whereParts.push(`${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} = $${params.length}`);
+      whereParts.push(
+        `${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} = $${params.length}`,
+      );
     }
-
 
     const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
@@ -98,11 +108,11 @@ const listResellers = async (req, res) => {
     const rows = canViewFinancials
       ? result.rows
       : result.rows.map((r) => ({
-        ...r,
-        monthly_rate: null,
-        due_amount: null,
-        next_pay_date: null,
-      }));
+          ...r,
+          monthly_rate: null,
+          due_amount: null,
+          next_pay_date: null,
+        }));
 
     res.json(rows);
   } catch (error) {
@@ -159,18 +169,25 @@ const createReseller = async (req, res) => {
     } = req.body || {};
 
     const resellerName = String(reseller_name || name || "").trim();
-    if (!resellerName) return res.status(400).json({ message: "Reseller name is required" });
+    if (!resellerName)
+      return res.status(400).json({ message: "Reseller name is required" });
 
     const manualUserId = String(user_id || reseller_code || "").trim();
     const baseUserId = resellerName.toLowerCase().replace(/[^a-z0-9]/g, "");
     const generatedUserId = `${baseUserId || "reseller"}_${Math.floor(1000 + Math.random() * 9000)}`;
     const finalUserId = manualUserId || generatedUserId;
     const companyName = String(company_name || resellerName).trim();
-    const rawResellerPassword = String(req.body?.password || contact_no || phone || finalUserId || "123456").trim() || "123456";
+    const rawResellerPassword =
+      String(
+        req.body?.password || contact_no || phone || finalUserId || "123456",
+      ).trim() || "123456";
     const resellerPassword = await bcrypt.hash(rawResellerPassword, 10);
-    const normalizedPartnerType = normalizePartnerType(partner_type) || "distribution_partner";
+    const normalizedPartnerType =
+      normalizePartnerType(partner_type) || "distribution_partner";
 
-    const joinDate = String(joining_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const joinDate = String(
+      joining_date || new Date().toISOString().slice(0, 10),
+    ).slice(0, 10);
     const otcAppliedMonth = `${getDhakaMonthYm()}-01`;
     const bw = {
       iig_bw: parseAmount(iig_bw, 0),
@@ -204,8 +221,12 @@ const createReseller = async (req, res) => {
       real_ip_price: realIpPrice,
     });
 
-    const nttnTypeText = Array.isArray(nttn_type) ? nttn_type.join(", ") : String(nttn_type || "").trim();
-    const connectionTypeText = Array.isArray(connection_type) ? connection_type.join(", ") : String(connection_type || "").trim();
+    const nttnTypeText = Array.isArray(nttn_type)
+      ? nttn_type.join(", ")
+      : String(nttn_type || "").trim();
+    const connectionTypeText = Array.isArray(connection_type)
+      ? connection_type.join(", ")
+      : String(connection_type || "").trim();
 
     await client.query("BEGIN");
 
@@ -330,38 +351,47 @@ const createReseller = async (req, res) => {
             ) RETURNING id`,
       hasResellerPartnerTypeColumn() && hasResellerOtcAppliedMonthColumn()
         ? [
-          ...insertValuesBase,
-          otcAppliedMonth,
-          normalizedPartnerType,
-          resellerPassword,
-          joinDate,
-        ]
-        : hasResellerPartnerTypeColumn()
-          ? [
             ...insertValuesBase,
+            otcAppliedMonth,
             normalizedPartnerType,
             resellerPassword,
             joinDate,
           ]
+        : hasResellerPartnerTypeColumn()
+          ? [
+              ...insertValuesBase,
+              normalizedPartnerType,
+              resellerPassword,
+              joinDate,
+            ]
           : [...insertValuesBase, resellerPassword, joinDate],
     );
 
     const newResellerId = ins.rows[0].id;
 
-    const channelUserCount = Math.max(0, parseInt(channel_user_count || 0, 10) || 0);
+    const channelUserCount = Math.max(
+      0,
+      parseInt(channel_user_count || 0, 10) || 0,
+    );
     if (channelUserCount > 0 || normalizedPartnerType === "channel_partner") {
       try {
-        await client.query("UPDATE resellers SET channel_user_count = $1 WHERE id = $2", [channelUserCount, newResellerId]);
+        await client.query(
+          "UPDATE resellers SET channel_user_count = $1 WHERE id = $2",
+          [channelUserCount, newResellerId],
+        );
       } catch (_) {}
 
       // Save initial profit share percentage
       const psp = parseAmount(req.body.profit_share_percentage, 0);
       if (psp > 0) {
         try {
-          await client.query(`
+          await client.query(
+            `
             INSERT INTO channel_partner_profile_settings (reseller_id, profit_share_percentage, updated_at)
             VALUES ($1, $2, NOW())
-          `, [newResellerId, Math.max(0, Math.min(100, psp))]);
+          `,
+            [newResellerId, Math.max(0, Math.min(100, psp))],
+          );
         } catch (_) {}
       }
     }
@@ -385,7 +415,10 @@ const createReseller = async (req, res) => {
       due_after: parseAmount(due_amount, 0),
       due_delta: parseAmount(due_amount, 0),
       field_changes: {
-        current_projected_bill: { old: 0, new: Math.round(projectedBill * 100) / 100 },
+        current_projected_bill: {
+          old: 0,
+          new: Math.round(projectedBill * 100) / 100,
+        },
         previous_month_due: { old: 0, new: parseAmount(due_amount, 0) },
         security_deposit: { old: 0, new: parseAmount(security_deposit, 0) },
         otc_charge: { old: 0, new: otcCharge },
@@ -393,7 +426,14 @@ const createReseller = async (req, res) => {
         real_ip_price: { old: 0, new: realIpPrice },
       },
       note: "Reseller created with financial baseline",
-      request_payload: { due_amount, security_deposit, initial_payment, otc_charge: otcCharge, real_ip_count: realIpCount, real_ip_price: realIpPrice },
+      request_payload: {
+        due_amount,
+        security_deposit,
+        initial_payment,
+        otc_charge: otcCharge,
+        real_ip_count: realIpCount,
+        real_ip_price: realIpPrice,
+      },
     });
 
     if (initPayment > 0) {
@@ -401,7 +441,12 @@ const createReseller = async (req, res) => {
         `INSERT INTO billing_logs (reseller_id, change_desc, effective_date, transaction_amount, created_at)
          VALUES ($1,$2,$3::timestamp,$4,NOW())
          RETURNING id`,
-        [newResellerId, `Initial Payment: ${initPayment.toFixed(2)} Tk.`, createdAt, initPayment],
+        [
+          newResellerId,
+          `Initial Payment: ${initPayment.toFixed(2)} Tk.`,
+          createdAt,
+          initPayment,
+        ],
       );
 
       await logResellerFinancialChange(client, {
@@ -419,7 +464,10 @@ const createReseller = async (req, res) => {
         due_delta: 0,
         field_changes: { payment_amount: initPayment },
         note: `Initial payment logged for reseller ${newResellerId}`,
-        request_payload: { initial_payment: initPayment, effective_date: createdAt },
+        request_payload: {
+          initial_payment: initPayment,
+          effective_date: createdAt,
+        },
       });
     }
 
@@ -428,7 +476,9 @@ const createReseller = async (req, res) => {
   } catch (error) {
     await client.query("ROLLBACK");
     console.error("createReseller:", error);
-    res.status(500).json({ message: "Failed to create reseller", detail: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to create reseller", detail: error.message });
   } finally {
     client.release();
   }
@@ -515,10 +565,8 @@ const getResellerProfile = async (req, res) => {
   }
 };
 
-
-
 module.exports = {
-    listResellers,
-    createReseller,
-    getResellerProfile
-}
+  listResellers,
+  createReseller,
+  getResellerProfile,
+};
