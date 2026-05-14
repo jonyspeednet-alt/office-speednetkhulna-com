@@ -286,7 +286,15 @@ const updateReseller = async (req, res) => {
 
         if (req.body.profit_share_percentage !== undefined) {
             const psp = parseAmount(req.body.profit_share_percentage, 0);
-            await pool.query(`UPDATE resellers SET profit_share_percentage = $1 WHERE id = $2`, [Math.max(0, Math.min(100, psp)), id]).catch(() => {});
+            await pool.query(`
+                INSERT INTO channel_partner_profile_settings (reseller_id, profit_share_percentage, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (reseller_id) DO UPDATE SET
+                    profit_share_percentage = EXCLUDED.profit_share_percentage,
+                    updated_at = NOW()
+            `, [id, Math.max(0, Math.min(100, psp))]).catch((e) => {
+                console.error("Error updating channel partner settings:", e);
+            });
         }
 
         if (req.body.channel_user_count !== undefined) {

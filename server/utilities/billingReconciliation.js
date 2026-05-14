@@ -74,7 +74,13 @@ class BillingReconciliation {
 
       // Get reseller profit share percentage
       const resellerResult = await client.query(
-        'SELECT profit_share_percentage FROM resellers WHERE id = $1',
+        `SELECT
+          COALESCE(
+            (SELECT cpps.profit_share_percentage FROM channel_partner_profile_settings cpps WHERE cpps.reseller_id = r.id),
+            (SELECT ccl.profit_share_pct FROM channel_commission_logs ccl WHERE ccl.reseller_id = r.id ORDER BY ccl.created_at DESC LIMIT 1),
+            0
+          ) AS profit_share_percentage
+         FROM resellers r WHERE r.id = $1`,
         [resellerId]
       );
       const profitSharePct = parseFloat(resellerResult.rows[0]?.profit_share_percentage) || 0;

@@ -14,8 +14,19 @@ const ImportModal = ({
         <ModalWrap title="Excel ডাটা ইম্পোর্ট করুন" onClose={() => { if (!importing) onClose(); }}>
             <div className="p-2">
                 <div className="alert alert-info py-2 small mb-3">
-                    <i className="fas fa-info-circle me-2" />
-                    Excel ফাইলে অবশ্যই <strong>&quot;Customer Name&quot;</strong> এবং <strong>&quot;Receive Amount&quot;</strong> কলাম থাকতে হবে।
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                        <span>
+                            <i className="fas fa-info-circle me-2" />
+                            Excel ফাইলে অবশ্যই <strong>&quot;Customer Name&quot;</strong> এবং <strong>&quot;Receive Amount&quot;</strong> কলাম থাকতে হবে।
+                        </span>
+                        <button 
+                            className="btn btn-xs btn-link p-0 text-decoration-none fw-bold" 
+                            style={{ fontSize: '0.75rem' }}
+                            onClick={() => import('../utils/excelGenerator').then(m => m.downloadUserImportSample())}
+                        >
+                            <i className="fas fa-download me-1" />Sample
+                        </button>
+                    </div>
                 </div>
                 <div className="mb-3">
                     <label className="form-label small">মাস নির্বাচন করুন</label>

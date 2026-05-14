@@ -131,6 +131,14 @@ const initChannelPartnerTables = async () => {
       "CREATE INDEX IF NOT EXISTS idx_ccp_log_id ON channel_commission_payments (commission_log_id)"
     );
 
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_partner_profile_settings (
+        reseller_id INT PRIMARY KEY,
+        profit_share_percentage NUMERIC(5,2) DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
     tablesInitialized = true;
     console.log("[ChannelPartner] tables ready");
   } catch (error) {

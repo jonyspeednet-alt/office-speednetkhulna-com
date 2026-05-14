@@ -353,10 +353,10 @@ const recordUserPayment = async (req, res) => {
     const result = await pool.query(
       `INSERT INTO channel_user_payments (
         reseller_id, user_id, month, service_period, bill_issued_date,
-        billing_status, amount_due, amount_paid, realized_amount, 
+        billing_status, amount_due, amount_paid, realized_amount,
         deferred_amount, payment_date, payment_status, note
       )
-       VALUES ($1, $2, $3, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES ($1, $2, $3::varchar, ($3 || '-01')::date, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id, month) DO UPDATE SET
          amount_paid = $6,
          realized_amount = $7,
@@ -416,7 +416,7 @@ const bulkRecordPayments = async (req, res) => {
             billing_status, amount_due, amount_paid, realized_amount,
             deferred_amount, payment_date, payment_status, note
           )
-           VALUES ($1, $2, $3, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
+           VALUES ($1, $2, $3::varchar, ($3 || '-01')::date, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (user_id, month) DO UPDATE SET
              amount_paid = $6,
              realized_amount = $7,
@@ -456,9 +456,14 @@ const getCommissionSummary = async (req, res) => {
     const month = req.query.month || getDhakaMonthYm();
 
     const resellerResult = await pool.query(
-      `SELECT id, COALESCE(profit_share_percentage, 0)::numeric AS profit_share_percentage,
-              COALESCE(channel_user_count, 0)::int AS channel_user_count
-       FROM resellers WHERE id = $1`,
+      `SELECT r.id,
+              COALESCE(r.channel_user_count, 0)::int AS channel_user_count,
+              COALESCE(
+                (SELECT cpps.profit_share_percentage FROM channel_partner_profile_settings cpps WHERE cpps.reseller_id = r.id),
+                (SELECT ccl.profit_share_pct FROM channel_commission_logs ccl WHERE ccl.reseller_id = r.id ORDER BY ccl.created_at DESC LIMIT 1),
+                0
+              )::numeric AS profit_share_percentage
+       FROM resellers r WHERE r.id = $1`,
       [resellerId]
     );
 
@@ -574,13 +579,18 @@ const getCommissionSummary = async (req, res) => {
 
 const generateCommissionInternal = async (resellerId, month) => {
   const resellerResult = await pool.query(
-    `SELECT id, COALESCE(profit_share_percentage, 0)::numeric AS profit_share_percentage
-     FROM resellers WHERE id = $1`,
+    `SELECT r.id,
+            COALESCE(
+              (SELECT cpps.profit_share_percentage FROM channel_partner_profile_settings cpps WHERE cpps.reseller_id = r.id),
+              (SELECT ccl.profit_share_pct FROM channel_commission_logs ccl WHERE ccl.reseller_id = r.id ORDER BY ccl.created_at DESC LIMIT 1),
+              0
+            )::numeric AS profit_share_pct
+     FROM resellers r WHERE r.id = $1`,
     [resellerId]
   );
   if (!resellerResult.rows.length) return null;
 
-  const profitPct = Number(resellerResult.rows[0].profit_share_percentage || 0);
+  const profitPct = Number(resellerResult.rows[0].profit_share_pct || 0);
 
   const collectionResult = await pool.query(
     `SELECT
@@ -1034,13 +1044,15 @@ const importChannelData = async (req, res) => {
         const billingStatus = calculateBillingStatus(receiveAmount, receiveAmount);
         const { realized, deferred } = calculateRealizedDeferred(receiveAmount, receiveAmount);
 
+        // $3 is a TEXT 'YYYY-MM' string; service_period is a DATE column.
+        // Use ($3 || '-01')::date to avoid "inconsistent types for parameter $3" error.
         await client.query(
           `INSERT INTO channel_user_payments (
             reseller_id, user_id, month, service_period, bill_issued_date,
             billing_status, amount_due, amount_paid, realized_amount,
             deferred_amount, payment_status, payment_date
           )
-           VALUES ($1, $2, $3, $3, NOW(), $4, $5, $5, $6, $7, 'paid', NOW())
+           VALUES ($1, $2, $3::varchar, ($3 || '-01')::date, NOW(), $4, $5, $5, $6, $7, 'paid', NOW())
            ON CONFLICT (user_id, month) DO UPDATE SET
              amount_paid = EXCLUDED.amount_paid,
              amount_due = EXCLUDED.amount_due,
@@ -1256,9 +1268,15 @@ const initiateReconciliation = async (req, res) => {
 
     const summary = summaryResult.rows[0];
 
-    // Get partner profit share percentage
+    // Get partner profit share percentage from settings or latest commission log
     const partnerResult = await pool.query(`
-      SELECT profit_share_percentage FROM resellers WHERE id = $1
+      SELECT
+        COALESCE(
+          (SELECT profit_share_percentage FROM channel_partner_profile_settings WHERE reseller_id = $1),
+          (SELECT profit_share_pct FROM channel_commission_logs WHERE reseller_id = $1 ORDER BY created_at DESC LIMIT 1),
+          0
+        ) AS profit_share_pct
+      FROM resellers WHERE id = $1
     `, [resellerId]);
 
     if (partnerResult.rows.length === 0) {
@@ -1268,7 +1286,7 @@ const initiateReconciliation = async (req, res) => {
       });
     }
 
-    const profitPct = Number(partnerResult.rows[0].profit_share_percentage || 0);
+    const profitPct = Number(partnerResult.rows[0].profit_share_pct || 0);
 
     // Calculate gross commission
     const totalRealized = Number(summary.total_realized || 0);
@@ -1385,7 +1403,12 @@ const approveReconciliation = async (req, res) => {
 
     // Get reconciliation
     const reconciliationResult = await pool.query(`
-      SELECT brl.*, cp.name AS partner_name, cp.profit_share_percentage AS profit_share_pct
+      SELECT brl.*, cp.reseller_name AS partner_name,
+             COALESCE(
+               (SELECT cpps.profit_share_percentage FROM channel_partner_profile_settings cpps WHERE cpps.reseller_id = cp.id),
+               (SELECT ccl.profit_share_pct FROM channel_commission_logs ccl WHERE ccl.reseller_id = cp.id ORDER BY ccl.created_at DESC LIMIT 1),
+               0
+             ) AS profit_share_pct
       FROM billing_reconciliation_logs brl
       JOIN resellers cp ON cp.id = brl.reseller_id
       WHERE brl.id = $1 AND brl.reseller_id = $2
@@ -1562,10 +1585,10 @@ const getReconciliations = async (req, res) => {
     const { status, limit = 10 } = req.query;
 
     let query = `
-      SELECT 
+      SELECT
         brl.*,
-        u1.name AS initiated_by_name,
-        u2.name AS approved_by_name
+        u1.full_name AS initiated_by_name,
+        u2.full_name AS approved_by_name
       FROM billing_reconciliation_logs brl
       LEFT JOIN users u1 ON u1.id = brl.initiated_by
       LEFT JOIN users u2 ON u2.id = brl.approved_by
@@ -1609,12 +1632,16 @@ const getReconciliationDetails = async (req, res) => {
     const { reconciliationId } = req.params;
 
     const result = await pool.query(`
-      SELECT 
+      SELECT
         brl.*,
-        cp.name AS partner_name,
-        cp.profit_share_percentage AS profit_share_pct,
-        u1.name AS initiated_by_name,
-        u2.name AS approved_by_name
+        cp.reseller_name AS partner_name,
+        COALESCE(
+          (SELECT cpps.profit_share_percentage FROM channel_partner_profile_settings cpps WHERE cpps.reseller_id = cp.id),
+          (SELECT ccl.profit_share_pct FROM channel_commission_logs ccl WHERE ccl.reseller_id = cp.id ORDER BY ccl.created_at DESC LIMIT 1),
+          0
+        ) AS profit_share_pct,
+        u1.full_name AS initiated_by_name,
+        u2.full_name AS approved_by_name
       FROM billing_reconciliation_logs brl
       JOIN resellers cp ON cp.id = brl.reseller_id
       LEFT JOIN users u1 ON u1.id = brl.initiated_by
@@ -1654,12 +1681,16 @@ const downloadReconciliationReport = async (req, res) => {
 
     // Get reconciliation with partner details
     const result = await pool.query(`
-      SELECT 
+      SELECT
         brl.*,
-        cp.name AS partner_name,
-        cp.profit_share_percentage AS profit_share_pct,
-        u1.name AS initiated_by_name,
-        u2.name AS approved_by_name
+        cp.reseller_name AS partner_name,
+        COALESCE(
+          (SELECT cpps.profit_share_percentage FROM channel_partner_profile_settings cpps WHERE cpps.reseller_id = cp.id),
+          (SELECT ccl.profit_share_pct FROM channel_commission_logs ccl WHERE ccl.reseller_id = cp.id ORDER BY ccl.created_at DESC LIMIT 1),
+          0
+        ) AS profit_share_pct,
+        u1.full_name AS initiated_by_name,
+        u2.full_name AS approved_by_name
       FROM billing_reconciliation_logs brl
       JOIN resellers cp ON cp.id = brl.reseller_id
       LEFT JOIN users u1 ON u1.id = brl.initiated_by

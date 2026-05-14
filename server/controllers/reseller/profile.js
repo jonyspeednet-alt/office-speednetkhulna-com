@@ -353,6 +353,17 @@ const createReseller = async (req, res) => {
       try {
         await client.query("UPDATE resellers SET channel_user_count = $1 WHERE id = $2", [channelUserCount, newResellerId]);
       } catch (_) {}
+
+      // Save initial profit share percentage
+      const psp = parseAmount(req.body.profit_share_percentage, 0);
+      if (psp > 0) {
+        try {
+          await client.query(`
+            INSERT INTO channel_partner_profile_settings (reseller_id, profit_share_percentage, updated_at)
+            VALUES ($1, $2, NOW())
+          `, [newResellerId, Math.max(0, Math.min(100, psp))]);
+        } catch (_) {}
+      }
     }
 
     const initPayment = parseAmount(initial_payment, 0);
@@ -451,8 +462,10 @@ const getResellerProfile = async (req, res) => {
         r.next_pay_date,
         COALESCE(r.status, 'active') AS status,
         r.created_at,
-        ${joiningDateExpr("r")} AS joining_date
+        ${joiningDateExpr("r")} AS joining_date,
+        COALESCE(cpps.profit_share_percentage, 0)::numeric AS profit_share_percentage
       FROM resellers r
+      LEFT JOIN channel_partner_profile_settings cpps ON cpps.reseller_id = r.id
       WHERE r.id = $1`,
       [id],
     );

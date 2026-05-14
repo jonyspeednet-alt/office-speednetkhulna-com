@@ -37,6 +37,7 @@ const init = {
   real_ip_price: "0",
   partner_type: "distribution_partner",
   channel_user_count: "0",
+  profit_share_percentage: "0",
 };
 
 const num = (v) => Number(v || 0);
@@ -744,6 +745,39 @@ const AddReseller = () => {
                       }}
                     >
                       যোগ দেওয়ার সময় কতজন user নিয়ে আসছে
+                    </div>
+                  </div>
+                )}
+
+                {isChannelPartner && (
+                  <div className="col-md-4">
+                    <FieldLabel>Profit Share (%)</FieldLabel>
+                    <InputWithIcon iconClass="fas fa-percent">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        className="form-control"
+                        style={{
+                          borderColor: "#e5e7eb",
+                          fontSize: "0.9rem",
+                        }}
+                        placeholder="0.00"
+                        value={form.profit_share_percentage}
+                        onChange={(e) =>
+                          f({ ...form, profit_share_percentage: e.target.value })
+                        }
+                      />
+                    </InputWithIcon>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: "0.73rem",
+                        color: "#9ca3af",
+                      }}
+                    >
+                      পার্টনারের কমিশন রেট (যেমন: ২০%)
                     </div>
                   </div>
                 )}

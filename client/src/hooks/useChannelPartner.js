@@ -4,7 +4,7 @@ import {
     getUserPayments, initMonthlyPayments, recordUserPayment, bulkRecordPayments,
     getCommissionSummary, generateCommission, adjustCommission, finalizeCommission,
     getCommissionHistory, recordCommissionPayment, getCommissionPayments, getChannelStatement,
-    importChannelData
+    importChannelData, getReconciliations, downloadReconciliationReport
 } from '../services/channelPartnerService';
 import { getDhakaDateYmd } from '../utils/formatters';
 
@@ -188,6 +188,29 @@ export const useChannelPartner = (profileId, isChannel) => {
         }
     };
 
+    const handleDownloadReport = async (log) => {
+        try {
+            // First find the reconciliation ID for this month
+            const { data: reconciliations } = await getReconciliations(profileId);
+            const matched = (reconciliations || []).find(r => r.reconciliation_month?.startsWith(log.month));
+            
+            if (!matched) {
+                // If not found, try to initiate it first
+                const { reconciliation_id } = await generateCommission(profileId, log.month);
+                if (reconciliation_id) {
+                    await downloadReconciliationReport(profileId, reconciliation_id);
+                } else {
+                    window.alert('নিষ্পত্তি রিপোর্ট পাওয়া যায়নি।');
+                }
+                return;
+            }
+            
+            await downloadReconciliationReport(profileId, matched.id);
+        } catch (err) {
+            window.alert('রিপোর্ট ডাউনলোড করতে সমস্যা হয়েছে।');
+        }
+    };
+
     return {
         cpUsers,
         cpMonth, setCpMonth,
@@ -224,6 +247,7 @@ export const useChannelPartner = (profileId, isChannel) => {
         handleCommissionPayment,
         handleAdjustment,
         handleFinalize,
-        handleImport
+        handleImport,
+        handleDownloadReport
     };
 };

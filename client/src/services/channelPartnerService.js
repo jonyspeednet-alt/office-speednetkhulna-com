@@ -68,3 +68,14 @@ export const importChannelData = async (resellerId, month, file) => {
     headers: { 'Content-Type': 'multipart/form-data' }
   })).data;
 };
+
+export const downloadReconciliationReport = async (resellerId, reconciliationId) => {
+  const response = await apiClient.get(`${base}/${resellerId}/reconciliation/${reconciliationId}/report`);
+  if (response.data?.pdf_url) {
+    window.open(response.data.pdf_url, '_blank');
+  }
+  return response.data;
+};
+
+export const getReconciliations = async (resellerId) =>
+  (await apiClient.get(`${base}/${resellerId}/reconciliation/list`)).data;

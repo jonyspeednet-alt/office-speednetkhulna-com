@@ -292,6 +292,7 @@ const ResellerProfile = () => {
                     setShowAdjust(log);
                   }}
                   onFinalize={handleFinalize}
+                  onDownloadReport={handleDownloadReport}
                 />
               )}
 

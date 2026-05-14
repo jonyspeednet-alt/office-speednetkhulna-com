@@ -66,12 +66,13 @@ const getResellerProfileDetails = async (req, res) => {
         ${hasResellerOtcAppliedMonthColumn() ? `r.otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(r.real_ip_count,0)::int AS real_ip_count,
         COALESCE(r.real_ip_price,0)::numeric AS real_ip_price,
-        ${hasChannelPartnerColumns() ? `COALESCE(r.channel_user_count,0)::int AS channel_user_count,` : `0::int AS channel_user_count,`}
-        ${hasChannelPartnerColumns() ? `COALESCE(r.profit_share_percentage,0)::numeric AS profit_share_percentage,` : `0::numeric AS profit_share_percentage,`}
+        ${hasChannelPartnerColumns() ? `COALESCE(r.channel_user_count,0)::int AS channel_user_count,` : `COALESCE(r.channel_user_count,0)::int AS channel_user_count,`}
+        COALESCE(cpps.profit_share_percentage, 0)::numeric AS profit_share_percentage,
         r.next_pay_date,
         r.created_at,
         ${joiningDateExpr("r")} AS joining_date
       FROM resellers r
+      LEFT JOIN channel_partner_profile_settings cpps ON cpps.reseller_id = r.id
       WHERE r.id = $1`,
       [id],
     );

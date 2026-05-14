@@ -6,7 +6,8 @@ const CommissionTab = ({
     onGenerateCommission,
     onCommissionPayment,
     onAdjustment,
-    onFinalize
+    onFinalize,
+    onDownloadReport
 }) => {
     return (
         <div className="p-3">
@@ -88,6 +89,11 @@ const CommissionTab = ({
                                                     <i className="fas fa-check text-success" />
                                                 </button>
                                             </>
+                                        )}
+                                        {h.status === 'finalized' && (
+                                            <button className="btn btn-white btn-sm border" onClick={() => onDownloadReport(h)} title="Download Report">
+                                                <i className="fas fa-file-pdf text-danger" />
+                                            </button>
                                         )}
                                     </div>
                                 </td>
