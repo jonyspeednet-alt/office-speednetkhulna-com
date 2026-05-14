@@ -22,7 +22,7 @@ const ImportModal = ({
                         <button 
                             className="btn btn-xs btn-link p-0 text-decoration-none fw-bold" 
                             style={{ fontSize: '0.75rem' }}
-                            onClick={() => import('../utils/excelGenerator').then(m => m.downloadUserImportSample())}
+                            onClick={() => import('../../../utils/excelGenerator').then(m => m.downloadUserImportSample())}
                         >
                             <i className="fas fa-download me-1" />Sample
                         </button>
