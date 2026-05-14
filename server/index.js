@@ -58,6 +58,10 @@ initAuditLogTable();
 initWhatsAppWorkerTables();
 initChannelPartnerTables();
 
+// Start cron jobs (Phase 4: Reconciliation)
+const { startReconciliationCron } = require('./cron/reconciliationCron');
+startReconciliationCron();
+
 // Apply all middleware
 applyMiddleware(app);
 

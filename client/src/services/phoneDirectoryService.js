@@ -1,6 +1,7 @@
 import apiClient from '../config/axiosConfig';
 
-const API_URL = '/api/phones';
+const API_URL = '/api/phone-directory';
+
 
 export const getPhones = async (page = 1, search = '') => {
   const response = await apiClient.get(`${API_URL}?page=${page}&search=${search}`);

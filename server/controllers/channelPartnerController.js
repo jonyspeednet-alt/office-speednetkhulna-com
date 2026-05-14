@@ -13,6 +13,37 @@ const parseAmount = (v, d = 0) => {
   return Number.isFinite(n) ? n : d;
 };
 
+/**
+ * Calculate billing status based on amounts
+ * @param {number} amountDue - Total amount due
+ * @param {number} amountPaid - Amount paid
+ * @returns {string} - 'realized', 'partial_deferred', or 'deferred'
+ */
+const calculateBillingStatus = (amountDue, amountPaid) => {
+  const due = parseAmount(amountDue, 0);
+  const paid = parseAmount(amountPaid, 0);
+
+  if (paid >= due && due > 0) return 'realized';
+  if (paid > 0 && paid < due) return 'partial_deferred';
+  return 'deferred';
+};
+
+/**
+ * Calculate realized and deferred amounts
+ * @param {number} amountDue - Total amount due
+ * @param {number} amountPaid - Amount paid
+ * @returns {{realized: number, deferred: number}}
+ */
+const calculateRealizedDeferred = (amountDue, amountPaid) => {
+  const due = parseAmount(amountDue, 0);
+  const paid = parseAmount(amountPaid, 0);
+
+  return {
+    realized: paid,
+    deferred: Math.max(0, due - paid)
+  };
+};
+
 const getDhakaMonthYm = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Dhaka",
@@ -90,7 +121,7 @@ const addUser = async (req, res) => {
       ) WHERE id = $1`,
         [resellerId]
       )
-      .catch(() => {});
+      .catch(() => { });
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -141,7 +172,7 @@ const updateUser = async (req, res) => {
       ) WHERE id = $1`,
         [resellerId]
       )
-      .catch(() => {});
+      .catch(() => { });
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -177,7 +208,7 @@ const deleteUser = async (req, res) => {
       ) WHERE id = $1`,
         [resellerId]
       )
-      .catch(() => {});
+      .catch(() => { });
 
     res.json({ message: "User deleted" });
   } catch (error) {
@@ -212,7 +243,7 @@ const getUserPayments = async (req, res) => {
         cup.note
        FROM channel_user_payments cup
        JOIN channel_partner_users cpu ON cpu.id = cup.user_id
-       WHERE cup.reseller_id = $1 AND cup.month = $2
+       WHERE cup.reseller_id = $1 AND cup.service_period = $2
        ORDER BY cpu.user_name ASC`,
       [resellerId, month]
     );
@@ -263,16 +294,26 @@ const initMonthlyPayments = async (req, res) => {
 
     const values = users.rows
       .map(
-        (u) =>
-          `(${resellerId}, ${u.id}, '${month}', ${Number(u.monthly_rate) + Number(u.prev_due)}, 0, 'unpaid')`
+        (u) => {
+          const amountDue = Number(u.monthly_rate) + Number(u.prev_due);
+          return `(${resellerId}, ${u.id}, '${month}', '${month}', NOW(), 'deferred', ${amountDue}, 0, 0, ${amountDue}, 'unpaid')`;
+        }
       )
       .join(", ");
 
     await pool.query(
-      `INSERT INTO channel_user_payments (reseller_id, user_id, month, amount_due, amount_paid, payment_status)
+      `INSERT INTO channel_user_payments (
+        reseller_id, user_id, month, service_period, bill_issued_date, 
+        billing_status, amount_due, amount_paid, realized_amount, 
+        deferred_amount, payment_status
+      )
        VALUES ${values}
        ON CONFLICT (user_id, month) DO UPDATE SET
          amount_due = EXCLUDED.amount_due,
+         service_period = EXCLUDED.service_period,
+         bill_issued_date = COALESCE(channel_user_payments.bill_issued_date, EXCLUDED.bill_issued_date),
+         billing_status = EXCLUDED.billing_status,
+         deferred_amount = EXCLUDED.deferred_amount,
          updated_at = NOW()`
     );
 
@@ -298,22 +339,38 @@ const recordUserPayment = async (req, res) => {
 
     const paid = parseAmount(amount_paid, 0);
 
+    // Get monthly rate to calculate amount_due
+    const userRate = await pool.query(
+      `SELECT COALESCE(monthly_rate, 0)::numeric AS monthly_rate FROM channel_partner_users WHERE id = $1`,
+      [user_id]
+    );
+    const amountDue = Number(userRate.rows[0]?.monthly_rate || 0);
+
+    const billingStatus = calculateBillingStatus(amountDue, paid);
+    const { realized, deferred } = calculateRealizedDeferred(amountDue, paid);
+    const paymentStatus = paid > 0 ? 'paid' : 'unpaid';
+
     const result = await pool.query(
-      `INSERT INTO channel_user_payments (reseller_id, user_id, month, amount_due, amount_paid, payment_date, payment_status, note)
-       VALUES ($1, $2, $3,
-         COALESCE((SELECT monthly_rate FROM channel_partner_users WHERE id = $2), 0),
-         $4, $5,
-         CASE WHEN $4 > 0 THEN 'paid' ELSE 'unpaid' END,
-         $6
-       )
+      `INSERT INTO channel_user_payments (
+        reseller_id, user_id, month, service_period, bill_issued_date,
+        billing_status, amount_due, amount_paid, realized_amount, 
+        deferred_amount, payment_date, payment_status, note
+      )
+       VALUES ($1, $2, $3, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id, month) DO UPDATE SET
-         amount_paid = $4,
-         payment_date = $5,
-         payment_status = CASE WHEN $4 > 0 THEN 'paid' ELSE 'unpaid' END,
-         note = COALESCE($6, channel_user_payments.note),
+         amount_paid = $6,
+         realized_amount = $7,
+         deferred_amount = $8,
+         payment_date = $9,
+         billing_status = $4,
+         payment_status = $10,
+         note = COALESCE($11, channel_user_payments.note),
          updated_at = NOW()
        RETURNING *`,
-      [resellerId, user_id, month, paid, payment_date || null, note || ""]
+      [
+        resellerId, user_id, month, billingStatus, amountDue, paid,
+        realized, deferred, payment_date || null, paymentStatus, note || ""
+      ]
     );
 
     res.json(result.rows[0]);
@@ -341,27 +398,37 @@ const bulkRecordPayments = async (req, res) => {
 
       for (const p of payments) {
         const paid = parseAmount(p.amount_paid, 0);
+
+        // Get monthly rate to calculate amount_due
+        const userRate = await client.query(
+          `SELECT COALESCE(monthly_rate, 0)::numeric AS monthly_rate FROM channel_partner_users WHERE id = $1`,
+          [p.user_id]
+        );
+        const amountDue = Number(userRate.rows[0]?.monthly_rate || 0);
+
+        const billingStatus = calculateBillingStatus(amountDue, paid);
+        const { realized, deferred } = calculateRealizedDeferred(amountDue, paid);
+        const paymentStatus = paid > 0 ? 'paid' : 'unpaid';
+
         await client.query(
-          `INSERT INTO channel_user_payments (reseller_id, user_id, month, amount_due, amount_paid, payment_date, payment_status, note)
-           VALUES ($1, $2, $3,
-             COALESCE((SELECT monthly_rate FROM channel_partner_users WHERE id = $2), 0),
-             $4, $5,
-             CASE WHEN $4 > 0 THEN 'paid' ELSE 'unpaid' END,
-             $6
-           )
+          `INSERT INTO channel_user_payments (
+            reseller_id, user_id, month, service_period, bill_issued_date,
+            billing_status, amount_due, amount_paid, realized_amount,
+            deferred_amount, payment_date, payment_status, note
+          )
+           VALUES ($1, $2, $3, $3, NOW(), $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT (user_id, month) DO UPDATE SET
-             amount_paid = $4,
-             payment_date = $5,
-             payment_status = CASE WHEN $4 > 0 THEN 'paid' ELSE 'unpaid' END,
-             note = COALESCE($6, channel_user_payments.note),
+             amount_paid = $6,
+             realized_amount = $7,
+             deferred_amount = $8,
+             payment_date = $9,
+             billing_status = $4,
+             payment_status = $10,
+             note = COALESCE($11, channel_user_payments.note),
              updated_at = NOW()`,
           [
-            resellerId,
-            p.user_id,
-            month,
-            paid,
-            p.payment_date || null,
-            p.note || "",
+            resellerId, p.user_id, month, billingStatus, amountDue, paid,
+            realized, deferred, p.payment_date || null, paymentStatus, p.note || ""
           ]
         );
       }
@@ -415,17 +482,32 @@ const getCommissionSummary = async (req, res) => {
         COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
         COUNT(*) FILTER (WHERE amount_paid = 0 OR amount_paid IS NULL) AS non_paying_users,
         COALESCE(SUM(amount_due), 0)::numeric AS total_due,
-        COALESCE(SUM(amount_paid), 0)::numeric AS total_collected
+        COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
+        COALESCE(SUM(realized_amount), 0)::numeric AS total_realized,
+        COALESCE(SUM(deferred_amount), 0)::numeric AS total_deferred
        FROM channel_user_payments
-       WHERE reseller_id = $1 AND month = $2`,
+       WHERE reseller_id = $1 AND service_period = $2`,
       [resellerId, month]
     );
     const collection = collectionResult.rows[0] || {};
     const totalCollected = Number(collection.total_collected || 0);
+    const totalRealized = Number(collection.total_realized || 0);
+    const totalDeferred = Number(collection.total_deferred || 0);
     const payingUsers = Number(collection.paying_users || 0);
     const profitPct = Number(reseller.profit_share_percentage || 0);
-    const grossCommission =
-      Math.round(totalCollected * (profitPct / 100) * 100) / 100;
+    // Commission calculated on realized amount only (actually paid)
+    const grossCommission = totalRealized * (profitPct / 100);
+
+    // Get partner advances for this month
+    const advancesResult = await pool.query(
+      `SELECT COALESCE(SUM(advance_amount), 0)::numeric AS total_advances
+       FROM channel_partner_advances
+       WHERE reseller_id = $1 
+       AND advance_month = TO_DATE($2 || '-01', 'YYYY-MM-DD')
+       AND settlement_status IN ('pending_adjustment', 'adjusted')`,
+      [resellerId, month]
+    );
+    const partnerAdvances = Number(advancesResult.rows[0]?.total_advances || 0);
 
     const existingLog = await pool.query(
       `SELECT * FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2`,
@@ -464,20 +546,23 @@ const getCommissionSummary = async (req, res) => {
       non_paying_users: Number(collection.non_paying_users || 0),
       total_due: Number(collection.total_due || 0),
       total_collected: totalCollected,
+      total_realized: totalRealized,
+      total_deferred: totalDeferred,
       gross_commission: grossCommission,
+      partner_advances: partnerAdvances,
       adjustments: Number(commissionLog?.adjustments || 0),
       deductions: Number(commissionLog?.deductions || 0),
       net_commission: commissionLog
         ? Number(commissionLog.net_commission)
-        : grossCommission,
+        : grossCommission - partnerAdvances,
       previous_balance: previousBalance,
       total_payable: commissionLog
         ? Number(commissionLog.total_payable)
-        : grossCommission + previousBalance,
+        : grossCommission - partnerAdvances + previousBalance,
       paid_to_partner: totalPaidToPartner,
       closing_balance: commissionLog
         ? Number(commissionLog.closing_balance)
-        : grossCommission + previousBalance - totalPaidToPartner,
+        : grossCommission - partnerAdvances + previousBalance - totalPaidToPartner,
       commission_status: commissionLog?.status || "not_generated",
       payment_status: commissionLog?.payment_status || "pending",
     });
@@ -501,14 +586,28 @@ const generateCommissionInternal = async (resellerId, month) => {
     `SELECT
       COUNT(*) AS total_users,
       COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
-      COALESCE(SUM(amount_paid), 0)::numeric AS total_collected
+      COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
+      COALESCE(SUM(realized_amount), 0)::numeric AS total_realized
      FROM channel_user_payments
-     WHERE reseller_id = $1 AND month = $2`,
+     WHERE reseller_id = $1 AND service_period = $2`,
     [resellerId, month]
   );
   const stats = collectionResult.rows[0] || {};
   const totalCollected = Number(stats.total_collected || 0);
-  const grossCommission = Math.round(totalCollected * (profitPct / 100) * 100) / 100;
+  const totalRealized = Number(stats.total_realized || 0);
+  // Commission calculated on realized amount (actually paid), not total collected
+  const grossCommission = totalRealized * (profitPct / 100);
+
+  // Get partner advances for this month
+  const advancesResult = await pool.query(
+    `SELECT COALESCE(SUM(advance_amount), 0)::numeric AS total_advances
+     FROM channel_partner_advances
+     WHERE reseller_id = $1 
+     AND advance_month = TO_DATE($2 || '-01', 'YYYY-MM-DD')
+     AND settlement_status IN ('pending_adjustment', 'adjusted')`,
+    [resellerId, month]
+  );
+  const partnerAdvances = Number(advancesResult.rows[0]?.total_advances || 0);
 
   const prevBalanceResult = await pool.query(
     `SELECT COALESCE(closing_balance, 0)::numeric AS balance
@@ -529,7 +628,8 @@ const generateCommissionInternal = async (resellerId, month) => {
   );
   const alreadyPaid = Number(existingPaidResult.rows[0]?.total || 0);
 
-  const netCommission = grossCommission; // Adjustments/Deductions are handled via update
+  // Net commission = gross - partner advances (deduct advances from commission)
+  const netCommission = grossCommission - partnerAdvances;
   const totalPayable = netCommission + previousBalance;
   const closingBalance = totalPayable - alreadyPaid;
 
@@ -546,25 +646,24 @@ const generateCommissionInternal = async (resellerId, month) => {
        profit_share_pct, gross_commission, adjustments, deductions,
        net_commission, previous_balance, total_payable,
        paid_amount, closing_balance, payment_status, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, $7, $8, $9, $10, $11, $12, 'draft')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11, $12, $13, $14, 'draft')
      ON CONFLICT (reseller_id, month) DO UPDATE SET
        total_users = EXCLUDED.total_users,
        paying_users = EXCLUDED.paying_users,
        total_collection = EXCLUDED.total_collection,
        profit_share_pct = EXCLUDED.profit_share_pct,
        gross_commission = EXCLUDED.gross_commission,
-       net_commission = EXCLUDED.gross_commission + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0),
+       net_commission = EXCLUDED.gross_commission - $8 + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0),
        previous_balance = EXCLUDED.previous_balance,
-       total_payable = EXCLUDED.gross_commission + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance,
-       paid_amount = $10,
-       closing_balance = EXCLUDED.gross_commission + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $10,
-
-       payment_status = $12,
+       total_payable = EXCLUDED.gross_commission - $8 + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance,
+       paid_amount = $12,
+       closing_balance = EXCLUDED.gross_commission - $8 + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $12,
+       payment_status = $14,
        updated_at = NOW()
      RETURNING *`,
     [
       resellerId, month, Number(stats.total_users || 0), Number(stats.paying_users || 0),
-      totalCollected, profitPct, grossCommission, previousBalance, totalPayable,
+      totalCollected, profitPct, grossCommission, partnerAdvances, netCommission, previousBalance, totalPayable,
       alreadyPaid, closingBalance, paymentStatus,
     ]
   );
@@ -849,6 +948,17 @@ const getStatement = async (req, res) => {
         ccl.month
        FROM channel_commission_logs ccl
        WHERE ccl.reseller_id = $1 AND ccl.deductions != 0
+       UNION ALL
+       SELECT
+        'advance'::text AS type,
+        cpa.id,
+        cpa.advance_amount AS amount,
+        cpa.advance_month AS date,
+        'অগ্রিম পেমেন্ট - ' || COALESCE(cpu.user_name, 'Unknown') || ' (' || cpa.advance_type || ')' AS description,
+        TO_CHAR(cpa.advance_month, 'YYYY-MM') AS month
+       FROM channel_partner_advances cpa
+       LEFT JOIN channel_partner_users cpu ON cpu.id = cpa.user_id
+       WHERE cpa.reseller_id = $1 AND cpa.settlement_status IN ('adjusted', 'pending_adjustment')
        ORDER BY date DESC
        LIMIT 50`,
       [resellerId]
@@ -921,16 +1031,26 @@ const importChannelData = async (req, res) => {
         }
 
         // 2. Upsert payment for the month
+        const billingStatus = calculateBillingStatus(receiveAmount, receiveAmount);
+        const { realized, deferred } = calculateRealizedDeferred(receiveAmount, receiveAmount);
+
         await client.query(
-          `INSERT INTO channel_user_payments (reseller_id, user_id, month, amount_due, amount_paid, payment_status, payment_date)
-           VALUES ($1, $2, $3, $4, $4, 'paid', NOW())
+          `INSERT INTO channel_user_payments (
+            reseller_id, user_id, month, service_period, bill_issued_date,
+            billing_status, amount_due, amount_paid, realized_amount,
+            deferred_amount, payment_status, payment_date
+          )
+           VALUES ($1, $2, $3, $3, NOW(), $4, $5, $5, $6, $7, 'paid', NOW())
            ON CONFLICT (user_id, month) DO UPDATE SET
              amount_paid = EXCLUDED.amount_paid,
              amount_due = EXCLUDED.amount_due,
+             realized_amount = EXCLUDED.realized_amount,
+             deferred_amount = EXCLUDED.deferred_amount,
+             billing_status = EXCLUDED.billing_status,
              payment_status = 'paid',
              payment_date = NOW(),
              updated_at = NOW()`,
-          [resellerId, userId, month, receiveAmount]
+          [resellerId, userId, month, billingStatus, receiveAmount, realized, deferred]
         );
       }
 
@@ -971,6 +1091,610 @@ const importChannelData = async (req, res) => {
   }
 };
 
+// ─── Partner Advance Import (Excel) ────────────────────────
+
+const importPartnerAdvances = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { resellerId } = req.params;
+    const { month } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    if (!month) {
+      return res.status(400).json({ message: "Month is required (YYYY-MM format)" });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet);
+
+    if (data.length === 0) {
+      return res.status(400).json({ message: "Excel file is empty" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      let createdCount = 0;
+      let totalAmount = 0;
+
+      for (const row of data) {
+        const userName = row["User Name"] || row["user_name"];
+        const advanceAmount = parseAmount(row["Advance Amount"] || row["advance_amount"], 0);
+        const advanceType = row["Advance Type"] || row["advance_type"] || "direct_payment";
+        const notes = row["Notes"] || row["notes"] || "";
+
+        if (!userName || advanceAmount <= 0) continue;
+
+        // Find user by name
+        const userResult = await client.query(
+          `SELECT id FROM channel_partner_users WHERE reseller_id = $1 AND user_name ILIKE $2`,
+          [resellerId, userName]
+        );
+
+        if (userResult.rows.length === 0) {
+          console.warn(`User not found: ${userName}`);
+          continue;
+        }
+
+        const userId = userResult.rows[0].id;
+        const advanceMonth = new Date(month + "-01");
+
+        // Insert advance
+        await client.query(
+          `INSERT INTO channel_partner_advances 
+            (reseller_id, user_id, advance_month, advance_amount, advance_type, settlement_status, notes, created_by, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'pending_adjustment', $6, $7, NOW())
+           ON CONFLICT DO NOTHING`,
+          [resellerId, userId, advanceMonth, advanceAmount, advanceType, notes, req.user?.id || null]
+        );
+
+        createdCount++;
+        totalAmount += advanceAmount;
+      }
+
+      await client.query("COMMIT");
+
+      res.json({
+        message: "Partner advances imported successfully",
+        created: createdCount,
+        total_amount: totalAmount,
+        total_rows: data.length
+      });
+
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("channelPartner.importPartnerAdvances:", error);
+    res.status(500).json({ message: "Failed to import partner advances: " + error.message });
+  }
+};
+
+// ─── Reconciliation Workflow (Phase 4) ─────────────────────
+
+const { generateReconciliationReport } = require('../utilities/reportGenerator');
+
+/**
+ * Initiate reconciliation for a month
+ * Creates a reconciliation record with snapshot of all data
+ */
+const initiateReconciliation = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { resellerId } = req.params;
+    const { month } = req.body; // YYYY-MM format
+    const userId = req.user?.id || 1;
+
+    if (!month) {
+      return res.status(400).json({
+        success: false,
+        error: 'Month is required',
+        message: 'Please provide month in YYYY-MM format'
+      });
+    }
+
+    // Validate month format
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid month format',
+        message: 'Month must be in YYYY-MM format'
+      });
+    }
+
+    // Check if month is in the future
+    const monthDate = new Date(month + '-01');
+    const now = new Date();
+    if (monthDate > now) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot reconcile future month',
+        message: 'Reconciliation can only be done for past or current months'
+      });
+    }
+
+    // Check if already reconciled
+    const existingResult = await pool.query(`
+      SELECT id, reconciliation_status, approved_at
+      FROM billing_reconciliation_logs
+      WHERE reseller_id = $1 AND reconciliation_month = $2
+    `, [resellerId, monthDate]);
+
+    if (existingResult.rows.length > 0) {
+      const existing = existingResult.rows[0];
+      if (existing.reconciliation_status === 'approved') {
+        return res.status(400).json({
+          success: false,
+          error: 'Month already reconciled',
+          message: 'This month has already been approved and locked',
+          reconciliation_id: existing.id,
+          approved_at: existing.approved_at
+        });
+      }
+      // If pending or rejected, allow re-initiation
+    }
+
+    // Get commission summary
+    const summaryResult = await pool.query(`
+      SELECT 
+        COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
+        COALESCE(SUM(realized_amount), 0)::numeric AS total_realized,
+        COALESCE(SUM(deferred_amount), 0)::numeric AS total_deferred
+      FROM channel_user_payments
+      WHERE reseller_id = $1 
+        AND service_period = $2
+        AND deleted_at IS NULL
+    `, [resellerId, month]);
+
+    const summary = summaryResult.rows[0];
+
+    // Get partner profit share percentage
+    const partnerResult = await pool.query(`
+      SELECT profit_share_percentage FROM resellers WHERE id = $1
+    `, [resellerId]);
+
+    if (partnerResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reseller not found'
+      });
+    }
+
+    const profitPct = Number(partnerResult.rows[0].profit_share_percentage || 0);
+
+    // Calculate gross commission
+    const totalRealized = Number(summary.total_realized || 0);
+    const grossCommission = totalRealized * (profitPct / 100);
+
+    // Get partner advances
+    const advancesResult = await pool.query(`
+      SELECT COALESCE(SUM(advance_amount), 0)::numeric AS total_advances
+      FROM channel_partner_advances
+      WHERE reseller_id = $1 
+        AND advance_month = $2
+        AND settlement_status IN ('pending_adjustment', 'adjusted')
+    `, [resellerId, monthDate]);
+
+    const partnerAdvances = Number(advancesResult.rows[0].total_advances || 0);
+
+    // Calculate net commission
+    const netCommission = grossCommission - partnerAdvances;
+
+    // Get snapshot data
+    const paymentsResult = await pool.query(`
+      SELECT 
+        cup.id, cup.user_id, cpu.user_name,
+        cup.amount_paid, cup.realized_amount, cup.deferred_amount,
+        cup.billing_status, cup.service_period
+      FROM channel_user_payments cup
+      LEFT JOIN channel_partner_users cpu ON cpu.id = cup.user_id
+      WHERE cup.reseller_id = $1 
+        AND cup.service_period = $2
+        AND cup.deleted_at IS NULL
+      ORDER BY cpu.user_name
+    `, [resellerId, month]);
+
+    const advancesListResult = await pool.query(`
+      SELECT 
+        cpa.id, cpa.user_id, cpu.user_name,
+        cpa.advance_amount, cpa.advance_type, cpa.notes,
+        cpa.advance_month, cpa.settlement_status
+      FROM channel_partner_advances cpa
+      LEFT JOIN channel_partner_users cpu ON cpu.id = cpa.user_id
+      WHERE cpa.reseller_id = $1 
+        AND cpa.advance_month = $2
+        AND cpa.settlement_status IN ('pending_adjustment', 'adjusted')
+      ORDER BY cpu.user_name
+    `, [resellerId, monthDate]);
+
+    const snapshot = {
+      payments: paymentsResult.rows,
+      advances: advancesListResult.rows,
+      summary: {
+        total_collected: summary.total_collected,
+        total_realized: summary.total_realized,
+        total_deferred: summary.total_deferred,
+        gross_commission: grossCommission,
+        partner_advances: partnerAdvances,
+        net_commission: netCommission
+      }
+    };
+
+    // Insert or update reconciliation record
+    const reconciliationResult = await pool.query(`
+      INSERT INTO billing_reconciliation_logs (
+        reseller_id, reconciliation_month,
+        total_collected, total_realized, total_deferred,
+        gross_commission, partner_advances, net_commission,
+        reconciliation_status, initiated_by, snapshot_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10)
+      ON CONFLICT (reseller_id, reconciliation_month) 
+      DO UPDATE SET
+        total_collected = EXCLUDED.total_collected,
+        total_realized = EXCLUDED.total_realized,
+        total_deferred = EXCLUDED.total_deferred,
+        gross_commission = EXCLUDED.gross_commission,
+        partner_advances = EXCLUDED.partner_advances,
+        net_commission = EXCLUDED.net_commission,
+        reconciliation_status = 'pending',
+        initiated_by = EXCLUDED.initiated_by,
+        snapshot_data = EXCLUDED.snapshot_data,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      resellerId, monthDate,
+      summary.total_collected, summary.total_realized, summary.total_deferred,
+      grossCommission, partnerAdvances, netCommission,
+      userId, JSON.stringify(snapshot)
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Reconciliation initiated successfully',
+      data: reconciliationResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('channelPartner.initiateReconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to initiate reconciliation',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Approve reconciliation
+ * Locks the month and generates PDF report
+ */
+const approveReconciliation = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { resellerId, reconciliationId } = req.params;
+    const { notes } = req.body;
+    const userId = req.user?.id || 1;
+
+    // Get reconciliation
+    const reconciliationResult = await pool.query(`
+      SELECT brl.*, cp.name AS partner_name, cp.profit_share_percentage AS profit_share_pct
+      FROM billing_reconciliation_logs brl
+      JOIN resellers cp ON cp.id = brl.reseller_id
+      WHERE brl.id = $1 AND brl.reseller_id = $2
+    `, [reconciliationId, resellerId]);
+
+    if (reconciliationResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reconciliation not found'
+      });
+    }
+
+    const reconciliation = reconciliationResult.rows[0];
+
+    // Check if already approved
+    if (reconciliation.reconciliation_status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        error: 'Already approved',
+        message: 'This reconciliation has already been approved',
+        approved_at: reconciliation.approved_at
+      });
+    }
+
+    // Check if pending
+    if (reconciliation.reconciliation_status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot approve',
+        message: `Reconciliation status is ${reconciliation.reconciliation_status}. Only pending reconciliations can be approved.`
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Update reconciliation status
+      await client.query(`
+        UPDATE billing_reconciliation_logs
+        SET reconciliation_status = 'approved',
+            approved_by = $1,
+            approved_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $2
+      `, [userId, reconciliationId]);
+
+      // Lock the month in state machine
+      await client.query(`
+        INSERT INTO channel_settlement_state_machine (
+          reseller_id, settlement_month, current_state, locked_at
+        ) VALUES ($1, $2, 'approved', NOW())
+        ON CONFLICT (reseller_id, settlement_month) 
+        DO UPDATE SET 
+          current_state = 'approved', 
+          locked_at = NOW(),
+          updated_at = NOW()
+      `, [resellerId, reconciliation.reconciliation_month]);
+
+      await client.query('COMMIT');
+
+      // Generate PDF report (async, don't wait)
+      generateReconciliationReport(reconciliation)
+        .then(pdfPath => {
+          console.log(`PDF report generated: ${pdfPath}`);
+        })
+        .catch(error => {
+          console.error('Error generating PDF report:', error);
+        });
+
+      res.json({
+        success: true,
+        message: 'Reconciliation approved successfully',
+        message_bn: 'নিষ্পত্তি সফলভাবে অনুমোদিত হয়েছে',
+        reconciliation_id: reconciliationId,
+        status: 'approved'
+      });
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('channelPartner.approveReconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to approve reconciliation',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Reject reconciliation
+ * Returns to pending status with reason
+ */
+const rejectReconciliation = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { resellerId, reconciliationId } = req.params;
+    const { reason } = req.body;
+    const userId = req.user?.id || 1;
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Reason is required',
+        message: 'Please provide a reason for rejection'
+      });
+    }
+
+    // Get reconciliation
+    const reconciliationResult = await pool.query(`
+      SELECT * FROM billing_reconciliation_logs
+      WHERE id = $1 AND reseller_id = $2
+    `, [reconciliationId, resellerId]);
+
+    if (reconciliationResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reconciliation not found'
+      });
+    }
+
+    const reconciliation = reconciliationResult.rows[0];
+
+    // Check if can be rejected
+    if (reconciliation.reconciliation_status === 'approved') {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot reject approved reconciliation',
+        message: 'Approved reconciliations cannot be rejected'
+      });
+    }
+
+    // Update status
+    await pool.query(`
+      UPDATE billing_reconciliation_logs
+      SET reconciliation_status = 'rejected',
+          rejection_reason = $1,
+          updated_at = NOW()
+      WHERE id = $2
+    `, [reason, reconciliationId]);
+
+    res.json({
+      success: true,
+      message: 'Reconciliation rejected',
+      message_bn: 'নিষ্পত্তি প্রত্যাখ্যাত হয়েছে',
+      reconciliation_id: reconciliationId,
+      status: 'rejected',
+      reason: reason
+    });
+
+  } catch (error) {
+    console.error('channelPartner.rejectReconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reject reconciliation',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get list of reconciliations
+ */
+const getReconciliations = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { resellerId } = req.params;
+    const { status, limit = 10 } = req.query;
+
+    let query = `
+      SELECT 
+        brl.*,
+        u1.name AS initiated_by_name,
+        u2.name AS approved_by_name
+      FROM billing_reconciliation_logs brl
+      LEFT JOIN users u1 ON u1.id = brl.initiated_by
+      LEFT JOIN users u2 ON u2.id = brl.approved_by
+      WHERE brl.reseller_id = $1
+    `;
+
+    const params = [resellerId];
+
+    if (status) {
+      query += ` AND brl.reconciliation_status = $2`;
+      params.push(status);
+    }
+
+    query += ` ORDER BY brl.reconciliation_month DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      count: result.rows.length
+    });
+
+  } catch (error) {
+    console.error('channelPartner.getReconciliations:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load reconciliations',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get reconciliation details
+ */
+const getReconciliationDetails = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { reconciliationId } = req.params;
+
+    const result = await pool.query(`
+      SELECT 
+        brl.*,
+        cp.name AS partner_name,
+        cp.profit_share_percentage AS profit_share_pct,
+        u1.name AS initiated_by_name,
+        u2.name AS approved_by_name
+      FROM billing_reconciliation_logs brl
+      JOIN resellers cp ON cp.id = brl.reseller_id
+      LEFT JOIN users u1 ON u1.id = brl.initiated_by
+      LEFT JOIN users u2 ON u2.id = brl.approved_by
+      WHERE brl.id = $1
+    `, [reconciliationId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reconciliation not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('channelPartner.getReconciliationDetails:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load reconciliation details',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Download reconciliation report (PDF)
+ */
+const downloadReconciliationReport = async (req, res) => {
+  try {
+    await initChannelPartnerTables();
+    const { reconciliationId } = req.params;
+
+    // Get reconciliation with partner details
+    const result = await pool.query(`
+      SELECT 
+        brl.*,
+        cp.name AS partner_name,
+        cp.profit_share_percentage AS profit_share_pct,
+        u1.name AS initiated_by_name,
+        u2.name AS approved_by_name
+      FROM billing_reconciliation_logs brl
+      JOIN resellers cp ON cp.id = brl.reseller_id
+      LEFT JOIN users u1 ON u1.id = brl.initiated_by
+      LEFT JOIN users u2 ON u2.id = brl.approved_by
+      WHERE brl.id = $1
+    `, [reconciliationId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Reconciliation not found'
+      });
+    }
+
+    const reconciliation = result.rows[0];
+
+    // Generate PDF
+    const pdfPath = await generateReconciliationReport(reconciliation);
+
+    res.json({
+      success: true,
+      pdf_url: pdfPath,
+      message: 'Report generated successfully'
+    });
+
+  } catch (error) {
+    console.error('channelPartner.downloadReconciliationReport:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate report',
+      message: error.message
+    });
+  }
+};
+
 module.exports = {
   listUsers,
   addUser,
@@ -989,5 +1713,13 @@ module.exports = {
   getCommissionPayments,
   getStatement,
   importChannelData,
+  importPartnerAdvances,
+  // Phase 4: Reconciliation
+  initiateReconciliation,
+  approveReconciliation,
+  rejectReconciliation,
+  getReconciliations,
+  getReconciliationDetails,
+  downloadReconciliationReport,
 };
 

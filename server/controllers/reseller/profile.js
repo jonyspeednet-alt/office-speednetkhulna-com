@@ -52,12 +52,9 @@ const listResellers = async (req, res) => {
     }
     if (partnerTypeFilter) {
       params.push(partnerTypeFilter);
-      if (hasResellerPartnerTypeColumn()) {
-        whereParts.push(`${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} = $${params.length}`);
-      } else {
-        whereParts.push(`'distribution_partner' = $${params.length}`);
-      }
+      whereParts.push(`${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} = $${params.length}`);
     }
+
 
     const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
 
@@ -70,7 +67,7 @@ const listResellers = async (req, res) => {
         r.contact_no AS phone,
         r.pop_location,
         r.pop_location AS ip_address,
-        ${hasResellerPartnerTypeColumn() ? `${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} AS partner_type,` : `'distribution_partner' AS partner_type,`}
+        ${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} AS partner_type,
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
         COALESCE(r.ggc_bw,0)::numeric AS ggc_bw,
@@ -440,7 +437,7 @@ const getResellerProfile = async (req, res) => {
         r.contact_no AS phone,
         r.pop_location,
         r.pop_location AS ip_address,
-        'distribution_partner' AS partner_type,
+        ${normalizedPartnerTypeSql("COALESCE(r.partner_type, '')")} AS partner_type,
         COALESCE(r.iig_bw,0)::numeric AS iig_bw,
         COALESCE(r.bdix_bw,0)::numeric AS bdix_bw,
         COALESCE(r.ggc_bw,0)::numeric AS ggc_bw,

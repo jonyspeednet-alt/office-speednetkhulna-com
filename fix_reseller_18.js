@@ -1,9 +1,9 @@
 const { loadEnv } = require('./server/utilities/envLoader');
 loadEnv();
 
-// Force DB port if it's acting weird
-process.env.DB_PORT = '5432';
-process.env.MAIN_DB_PORT = '5432';
+// Force DB port to 5433 as per tunnel logs
+process.env.DB_PORT = '5433';
+process.env.MAIN_DB_PORT = '5433';
 
 const pool = require('./server/utilities/db');
 
@@ -25,7 +25,7 @@ async function fixReseller() {
     console.log('After update:', after.rows[0]);
     
     console.log('\n--- SUCCESS ---');
-    console.log('Now refresh the page at https://office.speednetkhulna.com/reseller-profile/18');
+    console.log('Now refresh the page at http://localhost:5173/reseller-list and click "Channel Partner" tab');
     process.exit(0);
   } catch (err) {
     console.error(err);

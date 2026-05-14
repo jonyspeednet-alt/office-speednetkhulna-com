@@ -251,7 +251,152 @@ const auditLogMiddleware = (req, res, next) => {
   next();
 };
 
+// ============================================================================
+// Financial Transaction Logging (Immutable Audit Trail)
+// ============================================================================
+
+/**
+ * Log a financial transaction to the immutable audit log
+ * @param {Object} transactionData
+ * @param {number} transactionData.actor_user_id - User performing action
+ * @param {number} transactionData.reseller_id - Reseller affected
+ * @param {string} transactionData.action_type - Action type (e.g., 'payment.recorded')
+ * @param {string} [transactionData.entity_type] - Entity type (e.g., 'channel_user_payments')
+ * @param {number} [transactionData.entity_id] - ID of affected entity
+ * @param {number} [transactionData.amount_before] - Amount before
+ * @param {number} [transactionData.amount_after] - Amount after
+ * @param {string} [transactionData.previous_status] - Status before
+ * @param {string} [transactionData.new_status] - Status after
+ * @param {Object} [transactionData.request_payload] - Transaction details
+ * @param {string} [transactionData.notes] - Optional notes
+ * @param {string} [transactionData.ip_address] - IP address
+ * @returns {Promise<Object>} Audit log record
+ */
+const logFinancialTransaction = async (transactionData) => {
+  try {
+    const result = await pool.query(
+      `INSERT INTO reseller_financial_audit_log_immutable
+       (actor_user_id, reseller_id, action_type, entity_type, entity_id,
+        amount_before, amount_after, previous_status, new_status,
+        request_payload, notes, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+       RETURNING *`,
+      [
+        transactionData.actor_user_id,
+        transactionData.reseller_id,
+        transactionData.action_type,
+        transactionData.entity_type || null,
+        transactionData.entity_id || null,
+        transactionData.amount_before || null,
+        transactionData.amount_after || null,
+        transactionData.previous_status || null,
+        transactionData.new_status || null,
+        transactionData.request_payload ? JSON.stringify(sanitizeValue(transactionData.request_payload)) : null,
+        transactionData.notes || null,
+        transactionData.ip_address || null
+      ]
+    );
+
+    return result.rows[0];
+  } catch (error) {
+    console.error('[AuditLogger] Error logging financial transaction:', error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get audit trail for a reseller
+ * @param {number} resellerId
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @param {string} [actionType] - Optional filter by action type
+ * @returns {Promise<Array>} Audit records
+ */
+const getFinancialAuditTrail = async (resellerId, startDate, endDate, actionType = null) => {
+  let query = `
+    SELECT * FROM reseller_financial_audit_log_immutable
+    WHERE reseller_id = $1
+      AND created_at >= $2
+      AND created_at <= $3
+  `;
+  const params = [resellerId, startDate, endDate];
+
+  if (actionType) {
+    query += ` AND action_type = $4`;
+    params.push(actionType);
+  }
+
+  query += ` ORDER BY created_at DESC LIMIT 1000`;
+
+  const result = await pool.query(query, params);
+  return result.rows;
+};
+
+/**
+ * Verify audit trail integrity
+ * @param {number} resellerId
+ * @param {Date} period
+ * @returns {Promise<Object>} Integrity check results
+ */
+const verifyAuditIntegrity = async (resellerId, period) => {
+  const result = await pool.query(
+    `SELECT 
+       COUNT(*) as total_records,
+       COUNT(DISTINCT action_type) as unique_actions,
+       COUNT(DISTINCT actor_user_id) as unique_actors,
+       MIN(created_at) as earliest_record,
+       MAX(created_at) as latest_record,
+       SUM(CASE WHEN amount_after IS NOT NULL THEN 1 ELSE 0 END) as records_with_amounts
+     FROM reseller_financial_audit_log_immutable
+     WHERE reseller_id = $1
+       AND DATE(created_at) = $2`,
+    [resellerId, period]
+  );
+
+  return {
+    ...result.rows[0],
+    period,
+    reseller_id: resellerId,
+    verified_at: new Date().toISOString()
+  };
+};
+
+/**
+ * Export audit trail for compliance
+ * @param {number} resellerId
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @param {string} format - 'json' or 'csv'
+ * @returns {Promise<string>} Formatted audit trail
+ */
+const exportFinancialAuditTrail = async (resellerId, startDate, endDate, format = 'json') => {
+  const records = await getFinancialAuditTrail(resellerId, startDate, endDate);
+
+  if (format === 'json') {
+    return JSON.stringify(records, null, 2);
+  }
+
+  if (format === 'csv') {
+    if (records.length === 0) return 'No records found';
+
+    const headers = Object.keys(records[0]).join(',');
+    const rows = records.map(record =>
+      Object.values(record).map(val =>
+        typeof val === 'string' && val.includes(',') ? `"${val}"` : val
+      ).join(',')
+    );
+
+    return [headers, ...rows].join('\n');
+  }
+
+  throw new Error('Unsupported format. Use json or csv.');
+};
+
 module.exports = {
   initAuditLogTable,
   auditLogMiddleware,
+  logFinancialTransaction,
+  getFinancialAuditTrail,
+  verifyAuditIntegrity,
+  exportFinancialAuditTrail,
 };

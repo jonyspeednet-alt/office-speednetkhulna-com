@@ -1,0 +1,376 @@
+/**
+ * Billing Reconciliation Utility
+ * Handles month-end reconciliation process for channel partners
+ */
+
+const pool = require('./db');
+
+class BillingReconciliation {
+  /**
+   * Initiate month-end reconciliation for a specific period
+   * @param {number} resellerId - Reseller ID
+   * @param {Date} reconciliationPeriod - Period to reconcile (e.g., 2026-05-01)
+   * @param {number} initiatedBy - User ID initiating reconciliation
+   * @returns {Promise<Object>} Reconciliation log record
+   */
+  static async initiateReconciliation(resellerId, reconciliationPeriod, initiatedBy) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get all users for this reseller
+      const usersResult = await client.query(
+        `SELECT COUNT(*) as total_users FROM channel_partner_users 
+         WHERE reseller_id = $1 AND deleted_at IS NULL`,
+        [resellerId]
+      );
+      const totalUsers = parseInt(usersResult.rows[0].total_users, 10);
+
+      // Get total billed amount for this service period
+      const billedResult = await client.query(
+        `SELECT 
+           SUM(realized_amount) as total_realized,
+           SUM(deferred_amount) as total_deferred,
+           SUM(realized_amount + deferred_amount) as total_billed
+         FROM channel_user_payments 
+         WHERE reseller_id = $1 
+           AND service_period = $2 
+           AND deleted_at IS NULL`,
+        [resellerId, reconciliationPeriod]
+      );
+
+      const {
+        total_realized = 0,
+        total_deferred = 0,
+        total_billed = 0
+      } = billedResult.rows[0] || {};
+
+      // Get partner advances for this period
+      const advancesResult = await client.query(
+        `SELECT SUM(advance_amount) as total_advances
+         FROM channel_partner_advances 
+         WHERE reseller_id = $1 
+           AND advance_month = $2 
+           AND settlement_status = 'pending_adjustment'`,
+        [resellerId, reconciliationPeriod]
+      );
+      const totalAdvances = parseFloat(advancesResult.rows[0].total_advances) || 0;
+
+      // Get manual adjustments for this period
+      const adjustmentsResult = await client.query(
+        `SELECT 
+           SUM(CASE WHEN adjustment_type = 'manual_adjustment' THEN adjustment_amount ELSE 0 END) as total_adjustments,
+           SUM(CASE WHEN adjustment_type = 'deduction' THEN adjustment_amount ELSE 0 END) as total_deductions
+         FROM channel_adjustment_audit 
+         WHERE reseller_id = $1 
+           AND adjustment_month = $2`,
+        [resellerId, reconciliationPeriod]
+      );
+
+      const {
+        total_adjustments = 0,
+        total_deductions = 0
+      } = adjustmentsResult.rows[0] || {};
+
+      // Get reseller profit share percentage
+      const resellerResult = await client.query(
+        'SELECT profit_share_percentage FROM resellers WHERE id = $1',
+        [resellerId]
+      );
+      const profitSharePct = parseFloat(resellerResult.rows[0]?.profit_share_percentage) || 0;
+
+      // Calculate expected commission
+      const totalCollection = parseFloat(total_realized) + totalAdvances;
+      const expectedCommission = (totalCollection * profitSharePct) / 100;
+
+      // Create or update reconciliation log
+      const reconciliationResult = await client.query(
+        `INSERT INTO billing_reconciliation_logs (
+           reseller_id, reconciliation_period, total_users,
+           total_billed_this_period, total_deferred_billed_this_period, total_realized_this_period,
+           partner_advances_this_period, adjustments_this_period, deductions_this_period,
+           expected_commission, reconciliation_status
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft')
+         ON CONFLICT (reseller_id, reconciliation_period)
+         DO UPDATE SET
+           total_users = $3,
+           total_billed_this_period = $4,
+           total_deferred_billed_this_period = $5,
+           total_realized_this_period = $6,
+           partner_advances_this_period = $7,
+           adjustments_this_period = $8,
+           deductions_this_period = $9,
+           expected_commission = $10,
+           updated_at = NOW()
+         RETURNING *`,
+        [
+          resellerId,
+          reconciliationPeriod,
+          totalUsers,
+          parseFloat(total_billed),
+          parseFloat(total_deferred),
+          parseFloat(total_realized),
+          totalAdvances,
+          parseFloat(total_adjustments),
+          parseFloat(total_deductions),
+          expectedCommission
+        ]
+      );
+
+      // Log to immutable audit
+      await this.logAudit(
+        client,
+        initiatedBy,
+        resellerId,
+        'reconciliation.initiated',
+        'billing_reconciliation_logs',
+        reconciliationResult.rows[0].id,
+        null,
+        expectedCommission,
+        'draft',
+        'draft',
+        { reconciliation_period: reconciliationPeriod }
+      );
+
+      await client.query('COMMIT');
+      return reconciliationResult.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get reconciliation status and pending actions
+   * @param {number} reconciliationLogId - Reconciliation log ID
+   * @returns {Promise<Object>} Reconciliation status with pending actions
+   */
+  static async getReconciliationStatus(reconciliationLogId) {
+    const result = await pool.query(
+      `SELECT * FROM billing_reconciliation_logs WHERE id = $1`,
+      [reconciliationLogId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Reconciliation log not found');
+    }
+
+    const log = result.rows[0];
+    const pendingActions = [];
+
+    // Check for unreviewed deferred bills
+    if (log.total_deferred_billed_this_period > 0) {
+      pendingActions.push(
+        `Review deferred bills: ${log.total_deferred_billed_this_period}`
+      );
+    }
+
+    // Check for pending advances
+    if (log.partner_advances_this_period > 0) {
+      pendingActions.push(
+        `Apply partner advances: ${log.partner_advances_this_period}`
+      );
+    }
+
+    return {
+      ...log,
+      pending_actions: pendingActions,
+      is_ready_for_approval: pendingActions.length === 0
+    };
+  }
+
+  /**
+   * Approve and finalize reconciliation
+   * @param {number} reconciliationLogId - Reconciliation log ID
+   * @param {number} approvedBy - User ID approving reconciliation
+   * @returns {Promise<Object>} Updated reconciliation log
+   */
+  static async approveReconciliation(reconciliationLogId, approvedBy) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get reconciliation log
+      const logResult = await client.query(
+        'SELECT * FROM billing_reconciliation_logs WHERE id = $1 FOR UPDATE',
+        [reconciliationLogId]
+      );
+
+      if (logResult.rows.length === 0) {
+        throw new Error('Reconciliation log not found');
+      }
+
+      const log = logResult.rows[0];
+
+      // Validate all deferred bills are handled
+      const deferredResult = await client.query(
+        `SELECT COUNT(*) as count FROM channel_user_payments
+         WHERE billing_reconciliation_logs.id = $1 AND billing_status = 'deferred'`,
+        [reconciliationLogId]
+      );
+
+      // Mark all partner advances as adjusted
+      await client.query(
+        `UPDATE channel_partner_advances 
+         SET settlement_status = 'adjusted', resolved_at = NOW(), resolved_by = $1
+         WHERE reseller_id = $2 
+           AND advance_month = $3 
+           AND settlement_status = 'pending_adjustment'`,
+        [approvedBy, log.reseller_id, log.reconciliation_period]
+      );
+
+      // Update reconciliation status
+      const updateResult = await client.query(
+        `UPDATE billing_reconciliation_logs 
+         SET reconciliation_status = 'reconciled',
+             reconciled_at = NOW(),
+             reconciled_by = $1,
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING *`,
+        [approvedBy, reconciliationLogId]
+      );
+
+      // Log to immutable audit
+      await this.logAudit(
+        client,
+        approvedBy,
+        log.reseller_id,
+        'reconciliation.approved',
+        'billing_reconciliation_logs',
+        reconciliationLogId,
+        null,
+        log.expected_commission,
+        'draft',
+        'reconciled',
+        { reconciliation_period: log.reconciliation_period }
+      );
+
+      await client.query('COMMIT');
+      return updateResult.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get reconciliation report for a period
+   * @param {number} resellerId - Reseller ID
+   * @param {Date} period - Period to report on
+   * @returns {Promise<Object>} Detailed reconciliation report
+   */
+  static async getReconciliationReport(resellerId, period) {
+    const result = await pool.query(
+      `SELECT * FROM billing_reconciliation_logs 
+       WHERE reseller_id = $1 AND reconciliation_period = $2`,
+      [resellerId, period]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('No reconciliation found for this period');
+    }
+
+    const reconciliation = result.rows[0];
+
+    // Get detailed user billing breakdown
+    const billingsResult = await pool.query(
+      `SELECT 
+         cpu.id as user_id,
+         cpu.user_name,
+         cup.realized_amount,
+         cup.deferred_amount,
+         cup.billing_status,
+         cup.amount_paid
+       FROM channel_user_payments cup
+       JOIN channel_partner_users cpu ON cup.user_id = cpu.id
+       WHERE cup.reseller_id = $1 
+         AND cup.service_period = $2
+         AND cup.deleted_at IS NULL
+       ORDER BY cpu.user_name`,
+      [resellerId, period]
+    );
+
+    // Get partner advances applied
+    const advancesResult = await pool.query(
+      `SELECT 
+         cpa.id,
+         cpa.user_id,
+         cpu.user_name,
+         cpa.advance_amount,
+         cpa.advance_type,
+         cpa.notes
+       FROM channel_partner_advances cpa
+       LEFT JOIN channel_partner_users cpu ON cpa.user_id = cpu.id
+       WHERE cpa.reseller_id = $1 
+         AND cpa.advance_month = $2
+       ORDER BY cpu.user_name`,
+      [resellerId, period]
+    );
+
+    // Get adjustments/deductions
+    const adjustmentsResult = await pool.query(
+      `SELECT 
+         id,
+         adjustment_type,
+         adjustment_amount,
+         reason,
+         notes
+       FROM channel_adjustment_audit
+       WHERE reseller_id = $1 AND adjustment_month = $2
+       ORDER BY created_at DESC`,
+      [resellerId, period]
+    );
+
+    return {
+      reconciliation,
+      billings: billingsResult.rows,
+      partner_advances: advancesResult.rows,
+      adjustments: adjustmentsResult.rows,
+      report_date: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Log to immutable audit table
+   * @private
+   */
+  static async logAudit(
+    client,
+    actorUserId,
+    resellerId,
+    actionType,
+    entityType,
+    entityId,
+    amountBefore,
+    amountAfter,
+    previousStatus,
+    newStatus,
+    requestPayload
+  ) {
+    await client.query(
+      `INSERT INTO reseller_financial_audit_log_immutable
+       (actor_user_id, reseller_id, action_type, entity_type, entity_id, 
+        amount_before, amount_after, previous_status, new_status, request_payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+      [
+        actorUserId,
+        resellerId,
+        actionType,
+        entityType,
+        entityId,
+        amountBefore,
+        amountAfter,
+        previousStatus,
+        newStatus,
+        JSON.stringify(requestPayload)
+      ]
+    );
+  }
+}
+
+module.exports = BillingReconciliation;

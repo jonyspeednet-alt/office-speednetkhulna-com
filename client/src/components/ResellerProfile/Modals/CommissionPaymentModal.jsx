@@ -1,0 +1,84 @@
+import React from 'react';
+import ModalWrap from '../ModalWrap';
+import { money } from '../../../utils/formatters';
+
+const CommissionPaymentModal = ({
+    cpCommission,
+    commPayForm,
+    setCommPayForm,
+    onSubmit,
+    onClose
+}) => {
+    return (
+        <ModalWrap title="কমিশন পেমেন্ট দিন" onClose={onClose}>
+            <form className="row g-3" onSubmit={onSubmit}>
+                {cpCommission && (
+                    <div className="col-12">
+                        <div className="alert alert-info py-2 small mb-0">
+                            বকেয়া কমিশন: <strong>{money(cpCommission.closing_balance)}</strong>
+                        </div>
+                    </div>
+                )}
+                <div className="col-md-4">
+                    <label className="form-label fw-bold">পরিমাণ (Tk)</label>
+                    <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        className="form-control form-control-lg fw-bold text-success"
+                        value={commPayForm.amount}
+                        onChange={(e) => setCommPayForm({ ...commPayForm, amount: e.target.value })}
+                        required
+                    />
+                </div>
+                <div className="col-md-4">
+                    <label className="form-label fw-bold">তারিখ</label>
+                    <input
+                        type="date"
+                        className="form-control"
+                        value={commPayForm.payment_date}
+                        onChange={(e) => setCommPayForm({ ...commPayForm, payment_date: e.target.value })}
+                        required
+                    />
+                </div>
+                <div className="col-md-4">
+                    <label className="form-label fw-bold">পেমেন্ট মেথড</label>
+                    <select
+                        className="form-select"
+                        value={commPayForm.payment_method}
+                        onChange={(e) => setCommPayForm({ ...commPayForm, payment_method: e.target.value })}
+                    >
+                        <option>Cash</option>
+                        <option>Bank</option>
+                        <option>bKash</option>
+                        <option>Nagad</option>
+                        <option>Rocket</option>
+                        <option>Other</option>
+                    </select>
+                </div>
+                <div className="col-md-6">
+                    <label className="form-label fw-bold">রেফারেন্স নং</label>
+                    <input
+                        className="form-control"
+                        value={commPayForm.reference_no}
+                        onChange={(e) => setCommPayForm({ ...commPayForm, reference_no: e.target.value })}
+                    />
+                </div>
+                <div className="col-md-6">
+                    <label className="form-label fw-bold">নোট</label>
+                    <input
+                        className="form-control"
+                        value={commPayForm.note}
+                        onChange={(e) => setCommPayForm({ ...commPayForm, note: e.target.value })}
+                    />
+                </div>
+                <div className="col-12 text-end">
+                    <button type="button" className="btn btn-light rounded-pill me-2" onClick={onClose}>বাতিল</button>
+                    <button className="btn btn-success fw-bold rounded-pill px-4">পেমেন্ট নিশ্চিত করুন</button>
+                </div>
+            </form>
+        </ModalWrap>
+    );
+};
+
+export default CommissionPaymentModal;

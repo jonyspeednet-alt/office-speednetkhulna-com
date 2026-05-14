@@ -46,6 +46,7 @@ router.use('/internet-registrations', require('./internetRegistrationRoutes'));
 
 // ── Logs & Audit ────────────────────────────────────────────
 router.use('/audit-logs', require('./auditLogRoutes'));
+router.use('/audit', require('./auditVerificationRoutes'));
 router.use('/system-logs', require('./systemLogRoutes'));
 
 module.exports = router;

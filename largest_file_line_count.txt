@@ -1,0 +1,2 @@
+﻿C:\Users\Speed Net IT\Documents\office.speednetkhulna.com\.wwebjs_auth\session-office_leave_approvals\TranslateKit\models\en_es\2024.9.9.1\en_es_nmt\encoder_0.tflite
+747501
