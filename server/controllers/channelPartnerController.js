@@ -3,6 +3,10 @@ const pool = require("../utilities/db");
 
 const { initChannelPartnerTables } = require("../utilities/channelPartnerInit");
 const {
+  roundAmount: roundAmountHelper,
+  sumProductDeduction,
+} = require("../utilities/channelProductHelpers");
+const {
   logResellerFinancialChange,
   getActor,
   getReqMeta,
@@ -169,7 +173,7 @@ const addUser = async (req, res) => {
       .query(
         `UPDATE resellers SET channel_user_count = (
         SELECT COUNT(*) FROM channel_partner_users
-        WHERE reseller_id = $1 AND status = 'active'
+        WHERE reseller_id = $1
       ) WHERE id = $1`,
         [resellerId],
       )
@@ -226,7 +230,7 @@ const updateUser = async (req, res) => {
       .query(
         `UPDATE resellers SET channel_user_count = (
         SELECT COUNT(*) FROM channel_partner_users
-        WHERE reseller_id = $1 AND status = 'active'
+        WHERE reseller_id = $1
       ) WHERE id = $1`,
         [resellerId],
       )
@@ -262,7 +266,7 @@ const deleteUser = async (req, res) => {
       .query(
         `UPDATE resellers SET channel_user_count = (
         SELECT COUNT(*) FROM channel_partner_users
-        WHERE reseller_id = $1 AND status = 'active'
+        WHERE reseller_id = $1
       ) WHERE id = $1`,
         [resellerId],
       )
@@ -608,6 +612,7 @@ const getCommissionSummary = async (req, res) => {
       [resellerId, month],
     );
     const partnerAdvances = Number(advancesResult.rows[0]?.total_advances || 0);
+    const productDeduction = await sumProductDeduction(resellerId, month);
 
     const existingLog = await pool.query(
       `SELECT * FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2`,
@@ -648,22 +653,33 @@ const getCommissionSummary = async (req, res) => {
       total_deferred: totalDeferred,
       gross_commission: grossCommission,
       partner_advances: partnerAdvances,
+      product_deduction: productDeduction,
       adjustments: Number(commissionLog?.adjustments || 0),
       deductions: Number(commissionLog?.deductions || 0),
       net_commission: commissionLog
         ? Number(commissionLog.net_commission)
-        : grossCommission - partnerAdvances,
+        : roundAmountHelper(
+            grossCommission - partnerAdvances - productDeduction,
+          ),
       previous_balance: previousBalance,
       total_payable: commissionLog
         ? Number(commissionLog.total_payable)
-        : grossCommission - partnerAdvances + previousBalance,
+        : roundAmountHelper(
+            grossCommission -
+              partnerAdvances -
+              productDeduction +
+              previousBalance,
+          ),
       paid_to_partner: totalPaidToPartner,
       closing_balance: commissionLog
         ? Number(commissionLog.closing_balance)
-        : grossCommission -
-          partnerAdvances +
-          previousBalance -
-          totalPaidToPartner,
+        : roundAmountHelper(
+            grossCommission -
+              partnerAdvances -
+              productDeduction +
+              previousBalance -
+              totalPaidToPartner,
+          ),
       commission_status: commissionLog?.status || "not_generated",
       payment_status: commissionLog?.payment_status || "pending",
     });
@@ -714,6 +730,7 @@ const generateCommissionInternal = async (resellerId, month) => {
     [resellerId, month],
   );
   const partnerAdvances = Number(advancesResult.rows[0]?.total_advances || 0);
+  const productDeduction = await sumProductDeduction(resellerId, month);
 
   const prevBalanceResult = await pool.query(
     `SELECT COALESCE(closing_balance, 0)::numeric AS balance
@@ -734,8 +751,15 @@ const generateCommissionInternal = async (resellerId, month) => {
   );
   const alreadyPaid = Number(existingPaidResult.rows[0]?.total || 0);
 
-  // Net commission = gross - partner advances (deduct advances from commission)
-  const netCommission = roundAmount(grossCommission - partnerAdvances);
+  const manualAdjustments = 0;
+  const manualDeductions = 0;
+  const netCommission = roundAmount(
+    grossCommission -
+      partnerAdvances -
+      productDeduction +
+      manualAdjustments -
+      manualDeductions,
+  );
   const totalPayable = roundAmount(netCommission + previousBalance);
   const closingBalance = roundAmount(totalPayable - alreadyPaid);
 
@@ -749,22 +773,27 @@ const generateCommissionInternal = async (resellerId, month) => {
   const result = await pool.query(
     `INSERT INTO channel_commission_logs
       (reseller_id, month, total_users, paying_users, total_collection,
-       profit_share_pct, gross_commission, adjustments, deductions,
-       net_commission, previous_balance, total_payable,
+       profit_share_pct, gross_commission, partner_advances, product_deduction,
+       adjustments, deductions, net_commission, previous_balance, total_payable,
        paid_amount, closing_balance, payment_status, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10, $11, $12, $13, $14, 'draft')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, $10, $11, $12, $13, $14, $15, 'draft')
      ON CONFLICT (reseller_id, month) DO UPDATE SET
        total_users = EXCLUDED.total_users,
        paying_users = EXCLUDED.paying_users,
        total_collection = EXCLUDED.total_collection,
        profit_share_pct = EXCLUDED.profit_share_pct,
        gross_commission = EXCLUDED.gross_commission,
-       net_commission = EXCLUDED.gross_commission - $8 + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0),
+       partner_advances = EXCLUDED.partner_advances,
+       product_deduction = EXCLUDED.product_deduction,
+       net_commission = EXCLUDED.gross_commission - EXCLUDED.partner_advances - EXCLUDED.product_deduction
+         + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0),
        previous_balance = EXCLUDED.previous_balance,
-       total_payable = EXCLUDED.gross_commission - $8 + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance,
-       paid_amount = $12,
-       closing_balance = EXCLUDED.gross_commission - $8 + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $12,
-       payment_status = $14,
+       total_payable = EXCLUDED.gross_commission - EXCLUDED.partner_advances - EXCLUDED.product_deduction
+         + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance,
+       paid_amount = $13,
+       closing_balance = EXCLUDED.gross_commission - EXCLUDED.partner_advances - EXCLUDED.product_deduction
+         + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $13,
+       payment_status = $15,
        updated_at = NOW()
      RETURNING *`,
     [
@@ -776,6 +805,7 @@ const generateCommissionInternal = async (resellerId, month) => {
       profitPct,
       grossCommission,
       partnerAdvances,
+      productDeduction,
       netCommission,
       previousBalance,
       totalPayable,
@@ -821,9 +851,20 @@ const adjustCommission = async (req, res) => {
       `UPDATE channel_commission_logs
        SET ${updateField} = $1,
            ${noteField} = $2,
-           net_commission = gross_commission + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END,
-           total_payable = gross_commission + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END + previous_balance,
-           closing_balance = gross_commission + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END + previous_balance - paid_amount,
+           net_commission = gross_commission
+             - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
+             + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
+             - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END,
+           total_payable = gross_commission
+             - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
+             + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
+             - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END
+             + previous_balance,
+           closing_balance = gross_commission
+             - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
+             + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
+             - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END
+             + previous_balance - paid_amount,
            updated_at = NOW()
        WHERE id = $3 AND reseller_id = $4 AND status = 'draft'
        RETURNING *`,
@@ -924,6 +965,12 @@ const recordCommissionPayment = async (req, res) => {
       return res
         .status(400)
         .json({ message: "amount and payment_date are required" });
+    }
+
+    if (!commission_log_id) {
+      return res
+        .status(400)
+        .json({ message: "commission_log_id is required for commission payment" });
     }
 
     const paid = parseAmount(amount, 0);
@@ -1064,6 +1111,16 @@ const getStatement = async (req, res) => {
        WHERE ccl.reseller_id = $1 AND ccl.deductions != 0
        UNION ALL
        SELECT
+        'product_charge'::text AS type,
+        ccl.id,
+        COALESCE(ccl.product_deduction, 0)::numeric AS amount,
+        (ccl.month || '-01')::date AS date,
+        'প্রোডাক্ট চার্জ - ' || ccl.month AS description,
+        ccl.month
+       FROM channel_commission_logs ccl
+       WHERE ccl.reseller_id = $1 AND COALESCE(ccl.product_deduction, 0) != 0
+       UNION ALL
+       SELECT
         'advance'::text AS type,
         cpa.id,
         cpa.advance_amount AS amount,
@@ -1103,10 +1160,40 @@ const importChannelData = async (req, res) => {
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(worksheet);
+    const rawData = XLSX.utils.sheet_to_json(worksheet);
 
-    if (data.length === 0) {
+    if (rawData.length === 0) {
       return res.status(400).json({ message: "Excel file is empty" });
+    }
+
+    // Aggregate data by userName
+    let skippedCount = 0;
+    const aggregatedData = {};
+    for (const row of rawData) {
+      const rawUserName = getSheetValue(row, [
+        "Customer Name", "Customer", "User Name", "customer_name", "user_name"
+      ]);
+      const userName = String(rawUserName || "").trim();
+      if (!userName) {
+        skippedCount++;
+        continue;
+      }
+
+      const receiveVal = parseAmount(getSheetValue(row, [
+        "Receive Amount", "Received Amount", "Receive", "Paid Amount", "amount_paid", "receive_amount"
+      ]), 0);
+      const notPaidVal = getSheetValue(row, [
+        "Not Paid", "Unpaid", "Due", "Due Amount", "not_paid", "due_amount"
+      ]);
+
+      if (!aggregatedData[userName]) {
+        aggregatedData[userName] = { receiveAmount: 0, notPaidAmount: 0, hasNotPaid: false };
+      }
+      aggregatedData[userName].receiveAmount += receiveVal;
+      if (hasSheetValue(notPaidVal)) {
+        aggregatedData[userName].notPaidAmount = parseAmount(notPaidVal, 0);
+        aggregatedData[userName].hasNotPaid = true;
+      }
     }
 
     const client = await pool.connect();
@@ -1115,50 +1202,13 @@ const importChannelData = async (req, res) => {
 
       let updatedCount = 0;
       let createdCount = 0;
-      let skippedCount = 0;
       let totalReceived = 0;
       let totalNotPaid = 0;
       const prevMonth = getPreviousMonthYm(month);
 
-      for (const row of data) {
-        const rawUserName = getSheetValue(row, [
-          "Customer Name",
-          "Customer",
-          "User Name",
-          "customer_name",
-          "user_name",
-        ]);
-        const userName = String(rawUserName || "").trim();
-        const receiveValue = getSheetValue(row, [
-          "Receive Amount",
-          "Received Amount",
-          "Receive",
-          "Paid Amount",
-          "amount_paid",
-          "receive_amount",
-        ]);
-        const notPaidValue = getSheetValue(row, [
-          "Not Paid",
-          "Unpaid",
-          "Due",
-          "Due Amount",
-          "not_paid",
-          "due_amount",
-        ]);
+      for (const userName in aggregatedData) {
+        const { receiveAmount, notPaidAmount, hasNotPaid } = aggregatedData[userName];
 
-        if (!userName) {
-          skippedCount++;
-          continue;
-        }
-
-        const receiveAmount = roundAmount(Math.max(0, parseAmount(receiveValue, 0)));
-        const hasNotPaid = hasSheetValue(notPaidValue);
-        const notPaidAmount = hasNotPaid
-          ? roundAmount(Math.max(0, parseAmount(notPaidValue, 0)))
-          : null;
-
-        // 1. Find or create user. Match is case-insensitive to avoid duplicate users
-        // when Excel capitalization changes.
         let userResult = await client.query(
           `SELECT id, COALESCE(monthly_rate, 0)::numeric AS monthly_rate
            FROM channel_partner_users
@@ -1169,7 +1219,7 @@ const importChannelData = async (req, res) => {
 
         let userId;
         let monthlyRate = 0;
-        const initialMonthlyRate = roundAmount(receiveAmount + (notPaidAmount || 0));
+        const initialMonthlyRate = roundAmount(receiveAmount + (hasNotPaid ? notPaidAmount : 0));
 
         if (userResult.rows.length > 0) {
           userId = userResult.rows[0].id;
@@ -1198,8 +1248,6 @@ const importChannelData = async (req, res) => {
           : { rows: [] };
         const previousDue = Number(prevDueResult.rows[0]?.prev_due || 0);
 
-        // If Excel has "Not Paid", total due is Receive + Not Paid.
-        // If not, preserve current initialized due, otherwise monthly rate + previous due.
         const existingPaymentResult = await client.query(
           `SELECT COALESCE(amount_due, 0)::numeric AS amount_due
            FROM channel_user_payments
@@ -1207,22 +1255,13 @@ const importChannelData = async (req, res) => {
            LIMIT 1`,
           [resellerId, userId, month],
         );
-        const existingDue = Number(
-          existingPaymentResult.rows[0]?.amount_due || 0,
-        );
-        const sheetDeclaredDue = roundAmount(receiveAmount + Number(notPaidAmount || 0));
+        const existingDue = Number(existingPaymentResult.rows[0]?.amount_due || 0);
+        const sheetDeclaredDue = roundAmount(receiveAmount + (hasNotPaid ? notPaidAmount : 0));
         const calculatedDue = roundAmount(monthlyRate + previousDue);
         const amountDue = roundAmount(hasNotPaid
-          ? Math.max(
-              sheetDeclaredDue,
-              calculatedDue,
-              existingDue,
-              receiveAmount,
-            )
+          ? Math.max(sheetDeclaredDue, calculatedDue, existingDue, receiveAmount)
           : Math.max(existingDue, calculatedDue, receiveAmount));
 
-        // Keep monthly rate useful for newly imported users, but don't overwrite a
-        // configured package rate on existing users unless it is missing.
         if (monthlyRate <= 0 && amountDue > 0) {
           await client.query(
             `UPDATE channel_partner_users SET monthly_rate = $3, updated_at = NOW()
@@ -1232,10 +1271,7 @@ const importChannelData = async (req, res) => {
         }
 
         const billingStatus = calculateBillingStatus(amountDue, receiveAmount);
-        const { realized, deferred } = calculateRealizedDeferred(
-          amountDue,
-          receiveAmount,
-        );
+        const { realized, deferred } = calculateRealizedDeferred(amountDue, receiveAmount);
         const paymentStatus = calculatePaymentStatus(amountDue, receiveAmount);
 
         await client.query(
@@ -1265,9 +1301,7 @@ const importChannelData = async (req, res) => {
             realized,
             deferred,
             paymentStatus,
-            hasNotPaid
-              ? `Imported from sheet. Not Paid: ${Number(notPaidAmount || 0)}`
-              : "Imported from sheet.",
+            hasNotPaid ? `Imported: Not Paid ${notPaidAmount}` : "Imported from sheet.",
           ],
         );
 
@@ -1275,18 +1309,16 @@ const importChannelData = async (req, res) => {
         totalNotPaid += deferred;
       }
 
-      // 3. Update aggregate count
       await client.query(
         `UPDATE resellers SET channel_user_count = (
           SELECT COUNT(*) FROM channel_partner_users
-          WHERE reseller_id = $1 AND status = 'active'
+          WHERE reseller_id = $1
         ) WHERE id = $1`,
         [resellerId],
       );
 
       await client.query("COMMIT");
 
-      // Auto-trigger commission sync for the month
       try {
         await generateCommissionInternal(resellerId, month);
       } catch (ce) {
@@ -1298,7 +1330,7 @@ const importChannelData = async (req, res) => {
         created: createdCount,
         updated: updatedCount,
         skipped: skippedCount,
-        total: data.length,
+        total: rawData.length,
         total_received: totalReceived,
         total_not_paid: totalNotPaid,
       });

@@ -254,6 +254,13 @@ const applyApprovedRequest = async (req, res) => {
         .json({ message: "Only approved request can be applied" });
     }
 
+    if ((bwReq.engineer_status || "pending") === "implemented") {
+      await client.query("ROLLBACK");
+      return res
+        .status(400)
+        .json({ message: "Request has already been implemented" });
+    }
+
     const bwCol = normalizeBwType(bwReq.bw_type);
     const factor =
       String(bwReq.change_type || "").toLowerCase() === "decrease" ? -1 : 1;

@@ -5,6 +5,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import App from './App';
 import { initLocale } from './i18n';
 import './styles/index.css';
+import './styles/reseller-profile.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

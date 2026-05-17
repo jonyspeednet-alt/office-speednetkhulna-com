@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 import { getResellers } from '../services/resellerService';
 
 const PARTNER_TABS = {
-  mac_partner: { label: 'Mac Partner', kind: 'db' },
-  channel_partner: { label: 'Channel Partner', kind: 'db' },
-  distribution_partner: { label: 'Distribution Partner', kind: 'db' }
+  mac_partner: { label: 'Mac Partner', kind: 'db', icon: 'fas fa-desktop' },
+  channel_partner: { label: 'Channel Partner', kind: 'db', icon: 'fas fa-handshake' },
+  distribution_partner: { label: 'Distribution Partner', kind: 'db', icon: 'fas fa-network-wired' }
 };
 
 const bw = (val) => `${Number(val || 0)} Mbps`;
@@ -94,50 +94,63 @@ const ResellerList = () => {
   const visibleSheetColumns = isSheetTab ? getVisibleSheetColumns(sheetMeta.headers, filteredRows) : [];
 
   return (
-    <div className="container-fluid py-3 reseller-page">
-      <div className="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
+    <div className="container-fluid py-4 reseller-page" style={{ maxWidth: '1400px' }}>
+      <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-4 gap-3">
         <div>
-          <h3 className="fw-bold text-dark m-0">Partner Directory</h3>
-          <div className="text-muted small">
-            Partner-wise profile and account list
+          <h3 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
+            <div className="bg-primary bg-opacity-10 text-primary p-2 rounded d-flex align-items-center justify-content-center" style={{ width: '40px', height: '40px' }}>
+              <i className="fas fa-address-book" />
+            </div>
+            Partner Directory
+          </h3>
+          <div className="text-muted mt-2 small">
+            Manage partner profiles, bandwidth, and accounts
           </div>
         </div>
 
-        <div className="d-flex gap-2 flex-wrap">
-          <input
-            className="form-control"
-            style={{ minWidth: 240 }}
-            placeholder="Search by name, code, phone"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                load();
-              }
-            }}
-          />
-          <button className="btn btn-primary" onClick={load} disabled={loading}>
-            <i className="fas fa-search me-1" />
+        <div className="d-flex flex-column flex-sm-row gap-2 w-100 w-lg-auto">
+          <div className="position-relative flex-grow-1" style={{ minWidth: '260px' }}>
+            <i className="fas fa-search position-absolute text-muted" style={{ top: '50%', left: '15px', transform: 'translateY(-50%)' }} />
+            <input
+              className="form-control ps-5 py-2 rounded-pill shadow-sm border-0"
+              placeholder="Search by name, code, phone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  load();
+                }
+              }}
+              style={{ backgroundColor: '#f8f9fa' }}
+            />
+          </div>
+          <button className="btn btn-primary px-4 py-2 rounded-pill fw-medium d-flex align-items-center justify-content-center shadow-sm" onClick={load} disabled={loading}>
+            <i className="fas fa-search me-2" />
             Search
           </button>
-          <Link className="btn btn-success" to={`/add-reseller?partner_type=${activeTab}`}>
-            <i className="fas fa-user-plus me-1" />
+          <Link className="btn btn-success px-4 py-2 rounded-pill fw-medium d-flex align-items-center justify-content-center shadow-sm" to={`/add-reseller?partner_type=${activeTab}`}>
+            <i className="fas fa-user-plus me-2" />
             New Partner
           </Link>
         </div>
       </div>
 
-      <div className="d-flex gap-2 mb-3 flex-wrap">
-        {Object.entries(PARTNER_TABS).map(([key, tab]) => (
-          <button
-            key={key}
-            type="button"
-            className={`btn ${activeTab === key ? 'btn-dark' : 'btn-outline-dark'}`}
-            onClick={() => setActiveTab(key)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="mb-4 overflow-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <ul className="nav nav-pills bg-white p-2 rounded-4 shadow-sm d-inline-flex flex-nowrap w-100 w-md-auto" style={{ minWidth: 'max-content' }}>
+          {Object.entries(PARTNER_TABS).map(([key, tab]) => (
+            <li className="nav-item flex-sm-fill text-center" key={key}>
+              <button
+                type="button"
+                className={`nav-link fw-semibold px-4 py-2 rounded-pill w-100 ${activeTab === key ? 'active shadow text-white' : 'text-dark'}`}
+                onClick={() => setActiveTab(key)}
+                style={{ whiteSpace: 'nowrap', transition: 'all 0.3s ease', backgroundColor: activeTab === key ? '' : 'transparent', border: 'none' }}
+              >
+                <i className={`${tab.icon} me-2 ${activeTab === key ? 'text-white' : 'text-primary'}`} />
+                {tab.label}
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {error && (
@@ -146,30 +159,30 @@ const ResellerList = () => {
         </div>
       )}
 
-      <div className="card">
+      <div className="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
         <div className="table-responsive">
-          <table className="table align-middle mb-0">
+          <table className="table table-hover align-middle mb-0">
             {!isSheetTab ? (
               <>
-                <thead>
+                <thead className="table-light">
                   <tr>
-                    <th>Reseller / Company</th>
+                    <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">Reseller / Company</th>
                     {activeTab !== 'channel_partner' ? (
                       <>
-                        <th>NTTN Link</th>
-                        <th>IIG</th>
-                        <th>BDIX</th>
-                        <th>GGC</th>
-                        <th>FNA</th>
-                        <th>CDN</th>
-                        <th>Other</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">NTTN Link</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">IIG</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">BDIX</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">GGC</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">FNA</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">CDN</th>
+                        <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">Other</th>
                       </>
                     ) : (
-                      <th>Total Users</th>
+                      <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">Total Users</th>
                     )}
-                    <th>Location</th>
-                    <th>Status</th>
-                    <th className="text-end">Action</th>
+                    <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">Location</th>
+                    <th className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">Status</th>
+                    <th className="text-end text-uppercase text-secondary small fw-bold py-3 px-3 border-0">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -191,9 +204,12 @@ const ResellerList = () => {
                     </tr>
                   ) : filteredRows.map((r) => (
                     <tr key={r.id}>
-                      <td>
-                        <div className="fw-bold">{r.name}</div>
-                        <small className="text-muted">{r.company_name || r.reseller_code}</small>
+                      <td className="px-3 py-3">
+                        <div className="fw-bold text-dark">{r.name}</div>
+                        <small className="text-muted d-flex align-items-center gap-1 mt-1">
+                          <i className="fas fa-building small text-primary opacity-50"></i>
+                          {r.company_name || r.reseller_code}
+                        </small>
                       </td>
                       {activeTab !== 'channel_partner' ? (
                         <>
@@ -227,14 +243,22 @@ const ResellerList = () => {
                           </span>
                         </td>
                       )}
-                      <td>{r.pop_location || '-'}</td>
-                      <td>
-                        <span className={`badge ${String(r.status || 'active').toLowerCase() === 'active' ? 'bg-success-subtle text-success-emphasis' : 'bg-danger-subtle text-danger-emphasis'}`}>
+                      <td className="px-3">
+                        {r.pop_location ? (
+                          <span className="d-flex align-items-center gap-1 text-muted small fw-medium">
+                            <i className="fas fa-map-marker-alt text-danger opacity-75"></i>
+                            {r.pop_location}
+                          </span>
+                        ) : <span className="text-muted">-</span>}
+                      </td>
+                      <td className="px-3">
+                        <span className={`badge rounded-pill px-3 py-2 ${String(r.status || 'active').toLowerCase() === 'active' ? 'bg-success-subtle text-success-emphasis border border-success-subtle' : 'bg-danger-subtle text-danger-emphasis border border-danger-subtle'}`}>
+                          <i className={`fas ${String(r.status || 'active').toLowerCase() === 'active' ? 'fa-check-circle' : 'fa-times-circle'} me-1`}></i>
                           {r.status}
                         </span>
                       </td>
-                      <td className="text-end">
-                        <Link to={`/reseller-profile/${r.id}`} className="btn btn-sm btn-light text-primary rounded-circle shadow-sm" title="View profile">
+                      <td className="text-end px-3">
+                        <Link to={`/reseller-profile/${r.id}`} className="btn btn-sm btn-light text-primary rounded-circle shadow-sm" style={{ width: '32px', height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s ease' }} title="View profile" onMouseOver={(e) => { e.currentTarget.classList.add('bg-primary', 'text-white'); e.currentTarget.classList.remove('btn-light', 'text-primary'); }} onMouseOut={(e) => { e.currentTarget.classList.remove('bg-primary', 'text-white'); e.currentTarget.classList.add('btn-light', 'text-primary'); }}>
                           <i className="fas fa-eye" />
                         </Link>
                       </td>
@@ -244,10 +268,10 @@ const ResellerList = () => {
               </>
             ) : (
               <>
-                <thead>
+                <thead className="table-light">
                   <tr>
                     {visibleSheetColumns.map((column) => (
-                      <th key={column}>{column}</th>
+                      <th key={column} className="text-uppercase text-secondary small fw-bold py-3 px-3 border-0">{column}</th>
                     ))}
                   </tr>
                 </thead>
@@ -267,7 +291,7 @@ const ResellerList = () => {
                   ) : filteredRows.map((row, index) => (
                     <tr key={`${activeTab}-${row.__rowNumber || index}`}>
                       {visibleSheetColumns.map((column) => (
-                        <td key={column}>
+                        <td key={column} className="px-3 py-3">
                           {String(row?.[column] ?? '').trim() || '-'}
                         </td>
                       ))}

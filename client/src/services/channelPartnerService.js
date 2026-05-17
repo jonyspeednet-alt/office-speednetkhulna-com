@@ -107,3 +107,49 @@ export const downloadReconciliationReport = async (
 
 export const getReconciliations = async (resellerId) =>
   (await apiClient.get(`${base}/${resellerId}/reconciliation/list`)).data;
+
+// Product catalog
+export const listChannelProducts = async (activeOnly = true) =>
+  (
+    await apiClient.get(`${base}/products`, {
+      params: { active_only: activeOnly ? 1 : 0 },
+    })
+  ).data;
+
+export const importChannelProducts = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return (await apiClient.post(`${base}/products/import`, formData)).data;
+};
+
+export const createChannelProduct = async (payload) =>
+  (await apiClient.post(`${base}/products`, payload)).data;
+
+export const updateChannelProduct = async (productId, payload) =>
+  (await apiClient.put(`${base}/products/${productId}`, payload)).data;
+
+export const getUserProducts = async (resellerId, userId, month) =>
+  (
+    await apiClient.get(`${base}/${resellerId}/users/${userId}/products`, {
+      params: { month },
+    })
+  ).data;
+
+export const saveUserProducts = async (resellerId, userId, payload) =>
+  (
+    await apiClient.put(`${base}/${resellerId}/users/${userId}/products`, payload)
+  ).data;
+
+export const getProductSummary = async (resellerId, month) =>
+  (
+    await apiClient.get(`${base}/${resellerId}/product-summary`, {
+      params: { month },
+    })
+  ).data;
+
+export const getPartnerProductUsage = async (resellerId, month) =>
+  (
+    await apiClient.get(`${base}/${resellerId}/product-usage`, {
+      params: { month },
+    })
+  ).data;

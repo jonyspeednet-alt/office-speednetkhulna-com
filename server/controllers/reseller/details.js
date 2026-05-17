@@ -66,7 +66,14 @@ const getResellerProfileDetails = async (req, res) => {
         ${hasResellerOtcAppliedMonthColumn() ? `r.otc_charge_applied_month,` : `NULL::date AS otc_charge_applied_month,`}
         COALESCE(r.real_ip_count,0)::int AS real_ip_count,
         COALESCE(r.real_ip_price,0)::numeric AS real_ip_price,
-        ${hasChannelPartnerColumns() ? `COALESCE(r.channel_user_count,0)::int AS channel_user_count,` : `COALESCE(r.channel_user_count,0)::int AS channel_user_count,`}
+        COALESCE(
+          (SELECT COUNT(*)::int FROM channel_partner_users cpu WHERE cpu.reseller_id = r.id),
+          ${hasChannelPartnerColumns() ? `COALESCE(r.channel_user_count,0)` : `0`}
+        )::int AS channel_user_count,
+        COALESCE(
+          (SELECT COUNT(*)::int FROM channel_partner_users cpu WHERE cpu.reseller_id = r.id AND cpu.status = 'active'),
+          0
+        )::int AS channel_active_user_count,
         COALESCE(cpps.profit_share_percentage, 0)::numeric AS profit_share_percentage,
         r.next_pay_date,
         r.created_at,
@@ -155,7 +162,8 @@ const getResellerProfileDetails = async (req, res) => {
       const lastBill = lastBillResult.rows[0] || null;
   
       let pendingBillWarning = "";
-      if (lastBill?.bill_month) {
+      const isChannelPartner = String(reseller.partner_type || "") === "channel_partner";
+      if (!isChannelPartner && lastBill?.bill_month) {
         const lastBillMonth = String(lastBill.bill_month).slice(0, 7);
         const prevMonthCheck = previousMonthYm(currentMonth);
         if (lastBillMonth < prevMonthCheck) {

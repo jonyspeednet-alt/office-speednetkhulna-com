@@ -1,11 +1,13 @@
 const express = require("express");
 const authMiddleware = require("../middleware/auth");
 const controller = require("../controllers/channelPartnerController");
+const productController = require("../controllers/channelProductController");
 const {
   requirePermission,
   requireAnyPermission,
 } = require("../middleware/checkPermission");
 const { upload } = require("../middleware/uploadMiddleware");
+const { checkReconciliationLock } = require("../middleware/reconciliationLock");
 const pool = require("../utilities/db");
 
 const router = express.Router();
@@ -26,11 +28,44 @@ const canFinancials = requireAnyPermission([
   "billing.generate_bill",
 ]);
 
+// Product catalog (global)
+router.get("/products", canView, productController.listProducts);
+router.post("/products", canFinancials, productController.createProduct);
+router.put("/products/:productId", canFinancials, productController.updateProduct);
+router.post(
+  "/products/import",
+  upload.single("file"),
+  canFinancials,
+  productController.importProducts,
+);
+
 // User management
 router.get("/:resellerId/users", canView, controller.listUsers);
 router.post("/:resellerId/users", canManage, controller.addUser);
 router.put("/:resellerId/users/:userId", canManage, controller.updateUser);
 router.delete("/:resellerId/users/:userId", canManage, controller.deleteUser);
+
+router.get(
+  "/:resellerId/product-summary",
+  canFinancials,
+  productController.getProductSummary,
+);
+router.get(
+  "/:resellerId/product-usage",
+  canFinancials,
+  productController.getPartnerProductUsage,
+);
+router.get(
+  "/:resellerId/users/:userId/products",
+  canView,
+  productController.getUserProducts,
+);
+router.put(
+  "/:resellerId/users/:userId/products",
+  checkReconciliationLock,
+  canFinancials,
+  productController.saveUserProducts,
+);
 
 // Excel Import
 router.post(
@@ -64,10 +99,7 @@ router.post(
 // Phase 4: Reconciliation Workflow - Apply lock middleware
 // ============================================================================
 
-const {
-  checkReconciliationLock,
-  checkReconciliationModifiable,
-} = require("../middleware/reconciliationLock");
+const { checkReconciliationModifiable } = require("../middleware/reconciliationLock");
 
 router.post(
   "/:resellerId/user-payments/record",

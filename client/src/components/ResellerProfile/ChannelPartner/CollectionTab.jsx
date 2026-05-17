@@ -25,10 +25,9 @@ const CollectionTab = ({
   const collectionRate = Math.round((totalCollection / (totalDue || 1)) * 100);
 
   return (
-    <div className="p-3">
-      {/* Dashboard Header for Channel Partner */}
-      <div className="row g-3 mb-4 mt-1">
-        <div className="col-md-3">
+    <div className="p-2 p-sm-3">
+      <div className="row g-2 g-md-3 mb-3 mb-md-4 mt-1">
+        <div className="col-6 col-lg-3">
           <div
             className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden position-relative"
             style={{
@@ -56,7 +55,7 @@ const CollectionTab = ({
             </div>
           </div>
         </div>
-        <div className="col-md-3">
+        <div className="col-6 col-lg-3">
           <div
             className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden"
             style={{
@@ -94,7 +93,7 @@ const CollectionTab = ({
             </div>
           </div>
         </div>
-        <div className="col-md-3">
+        <div className="col-6 col-lg-3">
           <div
             className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden"
             style={{
@@ -124,7 +123,7 @@ const CollectionTab = ({
             </div>
           </div>
         </div>
-        <div className="col-md-3">
+        <div className="col-6 col-lg-3">
           <div
             className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden"
             style={{
@@ -154,18 +153,17 @@ const CollectionTab = ({
         </div>
       </div>
 
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div className="d-flex gap-2 align-items-center bg-light p-2 rounded-3 border">
-          <i className="far fa-calendar-alt text-primary ms-1" />
+      <div className="rp-toolbar mb-3">
+        <div className="rp-month-picker">
+          <i className="far fa-calendar-alt text-primary" />
           <input
             type="month"
-            className="form-control form-control-sm border-0 bg-transparent fw-bold"
             value={cpMonth}
             onChange={(e) => setCpMonth(e.target.value)}
-            style={{ width: 150 }}
+            aria-label="কালেকশন মাস"
           />
         </div>
-        <div className="d-flex gap-2">
+        <div className="rp-toolbar-actions">
           <button
             className="btn btn-sm btn-outline-success rounded-pill px-3 shadow-sm"
             onClick={() =>
@@ -174,7 +172,7 @@ const CollectionTab = ({
               )
             }
           >
-            <i className="fas fa-download me-1" /> Sample Excel
+            <i className="fas fa-download me-1" /><span className="d-none d-sm-inline"> Sample</span> Excel
           </button>
           <button
             className="btn btn-sm btn-info text-white rounded-pill px-3 shadow-sm"
@@ -191,7 +189,53 @@ const CollectionTab = ({
         </div>
       </div>
 
-      <div className="table-responsive" style={{ maxHeight: 380 }}>
+      <div className="rp-mobile-list d-md-none mb-3">
+        {cpUserPayments.length === 0 ? (
+          <div className="text-center text-muted py-4 small">ইনিশিয়ালাইজ করুন বা Excel ইম্পোর্ট করুন</div>
+        ) : (
+          cpUserPayments.map((p) => {
+            const pending = getPending(p);
+            return (
+              <article key={p.id} className="rp-mobile-card">
+                <div className="rp-mobile-card-head">
+                  <div>
+                    <div className="fw-bold">{p.user_name}</div>
+                    <small className="text-muted">{p.user_id_code || '-'} · {p.package_name || '-'}</small>
+                  </div>
+                  <span className={`badge ${pending <= 0 ? 'bg-success' : Number(p.amount_paid) > 0 ? 'bg-info' : 'bg-warning'} bg-opacity-10 text-dark border`}>
+                    {pending <= 0 ? 'Paid' : Number(p.amount_paid) > 0 ? 'Partial' : 'Unpaid'}
+                  </span>
+                </div>
+                <div className="rp-kv mt-2">
+                  <div><span className="label">বিল</span><br />{money(p.amount_due)}</div>
+                  <div><span className="label">বাকি</span><br /><span className={pending > 0 ? 'text-danger fw-bold' : 'text-success'}>{money(pending)}</span></div>
+                </div>
+                <div className="d-flex gap-2 align-items-center mt-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="form-control form-control-sm"
+                    defaultValue={Number(p.amount_paid || 0)}
+                    onBlur={(e) => {
+                      const val = Number(e.target.value || 0);
+                      if (val !== Number(p.amount_paid || 0)) onRecordPayment(p.user_id, val);
+                    }}
+                    aria-label="Receive amount"
+                  />
+                  {pending > 0 && (
+                    <button type="button" className="btn btn-sm btn-outline-success text-nowrap" onClick={() => onRecordPayment(p.user_id, Number(p.amount_due))}>
+                      Full Pay
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="rp-table-wrap d-none d-md-block">
         <table className="table table-hover align-middle mb-0 table-sm">
           <thead className="table-light">
             <tr>
@@ -277,8 +321,8 @@ const CollectionTab = ({
         </table>
       </div>
       {cpUserPayments.length > 0 && (
-        <div className="mt-3 text-end">
-          <button className="btn btn-sm btn-success" onClick={onBulkFullPaid}>
+        <div className="mt-3 text-center text-md-end">
+          <button type="button" className="btn btn-sm btn-success w-100 w-md-auto" onClick={onBulkFullPaid}>
             <i className="fas fa-check-double me-1" />
             সবাই Full Paid
           </button>

@@ -2,6 +2,9 @@ import React from "react";
 import { money } from "../../../utils/formatters";
 
 const CommissionTab = ({
+  cpMonth,
+  setCpMonth,
+  cpCommission,
   cpHistory,
   onGenerateCommission,
   onCommissionPayment,
@@ -13,17 +16,47 @@ const CommissionTab = ({
     (h) => h.status === "finalized" && Number(h.closing_balance || 0) > 0,
   );
   const latestPayable = payableLogs[0] || null;
+  const showMonthSummary =
+    cpCommission && String(cpCommission.month || "") === String(cpMonth || "");
+
   return (
-    <div className="p-3">
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h6 className="fw-bold m-0">কমিশন ইতিহাস</h6>
-        <div className="d-flex gap-2">
+    <div className="p-2 p-sm-3">
+      {showMonthSummary && Number(cpCommission.product_deduction || 0) > 0 && (
+        <div className="alert alert-warning border-0 py-2 small mb-3">
+          <i className="fas fa-box me-2" />
+          {cpMonth} মাসে প্রোডাক্ট কাটা:{" "}
+          <strong>{money(cpCommission.product_deduction)}</strong>
+          {Number(cpCommission.partner_advances || 0) > 0 && (
+            <>
+              {" "}
+              · অগ্রিম: <strong>{money(cpCommission.partner_advances)}</strong>
+            </>
+          )}
+        </div>
+      )}
+      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div className="d-flex gap-2 align-items-center">
+          <h6 className="fw-bold m-0">কমিশন ইতিহাস</h6>
+          {cpMonth && setCpMonth && (
+            <div className="rp-month-picker">
+              <i className="far fa-calendar-alt text-primary" />
+              <input
+                type="month"
+                value={cpMonth}
+                onChange={(e) => setCpMonth(e.target.value)}
+                aria-label="কমিশন মাস"
+              />
+            </div>
+          )}
+        </div>
+        <div className="rp-toolbar-actions">
           <button
-            className="btn btn-sm btn-primary"
+            type="button"
+            className="btn btn-sm btn-primary rounded-pill"
             onClick={onGenerateCommission}
           >
             <i className="fas fa-calculator me-1" />
-            কমিশন Generate
+            <span className="d-none d-sm-inline">কমিশন </span>Generate
           </button>
           <button
             className="btn btn-sm btn-success"
@@ -40,7 +73,7 @@ const CommissionTab = ({
           </button>
         </div>
       </div>
-      <div className="table-responsive">
+      <div className="rp-table-wrap rp-table-wide d-none d-md-block">
         <table className="table table-hover align-middle mb-0 table-sm">
           <thead className="table-light">
             <tr>
@@ -49,6 +82,7 @@ const CommissionTab = ({
               <th>কালেকশন</th>
               <th>%</th>
               <th>Gross</th>
+              <th>Product</th>
               <th>Adj</th>
               <th>Ded</th>
               <th>Net</th>
@@ -61,7 +95,7 @@ const CommissionTab = ({
           <tbody>
             {cpHistory.length === 0 ? (
               <tr>
-                <td colSpan="12" className="text-center text-muted py-4">
+                <td colSpan="13" className="text-center text-muted py-4">
                   কোনো কমিশন ইতিহাস নেই
                 </td>
               </tr>
@@ -86,6 +120,20 @@ const CommissionTab = ({
                     </span>
                   </td>
                   <td>{money(h.gross_commission)}</td>
+                  <td
+                    className={
+                      Number(h.product_deduction || 0) !== 0 ? "text-danger" : ""
+                    }
+                  >
+                    {Number(h.product_deduction || 0) !== 0 ? (
+                      <div className="d-flex align-items-center">
+                        <span className="me-1">-</span>
+                        {money(h.product_deduction)}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td
                     className={Number(h.adjustments) !== 0 ? "text-info" : ""}
                   >

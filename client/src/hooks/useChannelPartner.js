@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "react-hot-toast";
 import {
   getChannelUsers,
   addChannelUser,
@@ -19,10 +20,15 @@ import {
   importChannelData,
   getReconciliations,
   downloadReconciliationReport,
+  listChannelProducts,
+  importChannelProducts,
+  getProductSummary,
+  getUserProducts,
+  saveUserProducts,
 } from "../services/channelPartnerService";
 import { getDhakaDateYmd } from "../utils/formatters";
 
-export const useChannelPartner = (profileId, isChannel) => {
+export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
   const [cpUsers, setCpUsers] = useState([]);
   const [cpMonth, setCpMonth] = useState(getDhakaDateYmd().slice(0, 7));
   const [cpUserPayments, setCpUserPayments] = useState([]);
@@ -32,6 +38,13 @@ export const useChannelPartner = (profileId, isChannel) => {
   const [cpPayments, setCpPayments] = useState([]);
   const [cpLoading, setCpLoading] = useState(false);
   const [cpUserSearch, setCpUserSearch] = useState("");
+  const [cpProductSummary, setCpProductSummary] = useState(null);
+  const [cpProductCatalog, setCpProductCatalog] = useState([]);
+  const [showUserProducts, setShowUserProducts] = useState(null);
+  const [userProductsUsage, setUserProductsUsage] = useState([]);
+  const [userProductsLoading, setUserProductsLoading] = useState(false);
+  const [savingUserProducts, setSavingUserProducts] = useState(false);
+  const [importingCatalog, setImportingCatalog] = useState(false);
 
   // Modal states
   const [showAddUser, setShowAddUser] = useState(false);
@@ -68,21 +81,23 @@ export const useChannelPartner = (profileId, isChannel) => {
     if (!profileId || !isChannel) return;
     setCpLoading(true);
     try {
-      const [users, commission, history, statement, payments] =
+      const [users, commission, history, statement, payments, productSummary] =
         await Promise.all([
           getChannelUsers(profileId).catch(() => []),
           getCommissionSummary(profileId, cpMonth).catch(() => null),
           getCommissionHistory(profileId).catch(() => []),
           getChannelStatement(profileId).catch(() => []),
           getCommissionPayments(profileId).catch(() => []),
+          getProductSummary(profileId, cpMonth).catch(() => null),
         ]);
       setCpUsers(users);
       setCpCommission(commission);
       setCpHistory(history);
       setCpStatement(statement);
       setCpPayments(payments);
+      setCpProductSummary(productSummary);
     } catch (e) {
-      /* ignore */
+      toast.error(e?.response?.data?.message || "Channel partner data load failed");
     }
     setCpLoading(false);
   }, [profileId, isChannel, cpMonth]);
@@ -104,31 +119,62 @@ export const useChannelPartner = (profileId, isChannel) => {
     }
   }, [isChannel, loadChannelData, loadUserPayments]);
 
+  useEffect(() => {
+    if (!isChannel) return;
+    listChannelProducts(true)
+      .then((rows) => setCpProductCatalog(Array.isArray(rows) ? rows : []))
+      .catch(() => setCpProductCatalog([]));
+  }, [isChannel]);
+
+  const refreshProfile = useCallback(async () => {
+    if (typeof onProfileRefresh === "function") {
+      await onProfileRefresh();
+    }
+  }, [onProfileRefresh]);
+
   const handleAddUser = async (e) => {
     e.preventDefault();
-    await addChannelUser(profileId, newUser);
-    setShowAddUser(false);
-    setNewUser({
-      user_name: "",
-      user_id_code: "",
-      phone: "",
-      package_name: "",
-      monthly_rate: "",
-    });
-    loadChannelData();
+    try {
+      await addChannelUser(profileId, newUser);
+      setShowAddUser(false);
+      setNewUser({
+        user_name: "",
+        user_id_code: "",
+        phone: "",
+        package_name: "",
+        monthly_rate: "",
+      });
+      await loadChannelData();
+      await refreshProfile();
+      toast.success("ইউজার যোগ হয়েছে");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "ইউজার যোগ করা যায়নি");
+    }
   };
 
   const handleEditUser = async (e) => {
     e.preventDefault();
-    await updateChannelUser(profileId, showEditUser.id, showEditUser);
-    setShowEditUser(null);
-    loadChannelData();
+    try {
+      await updateChannelUser(profileId, showEditUser.id, showEditUser);
+      setShowEditUser(null);
+      await loadChannelData();
+      await refreshProfile();
+      toast.success("ইউজার আপডেট হয়েছে");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "ইউজার আপডেট করা যায়নি");
+    }
   };
 
   const handleDeleteUser = async (userId) => {
     if (window.confirm("এই ইউজার মুছে ফেলতে চান?")) {
-      await deleteChannelUser(profileId, userId);
-      loadChannelData();
+      try {
+        await deleteChannelUser(profileId, userId);
+        await loadChannelData();
+        await refreshProfile();
+        toast.success("ইউজার মুছে ফেলা হয়েছে");
+      } catch (err) {
+        toast.error(err?.response?.data?.message || "ইউজার মুছতে সমস্যা হয়েছে");
+      }
     }
   };
 
@@ -171,38 +217,53 @@ export const useChannelPartner = (profileId, isChannel) => {
   };
 
   const handleGenerateCommission = async () => {
-    await generateCommission(profileId, cpMonth);
-    loadChannelData();
+    if (
+      !window.confirm(
+        `${cpMonth} মাসের জন্য কমিশন generate করতে চান? আগে কালেকশন ইনিশিয়ালাইজ/আপডেট হয়েছে কিনা নিশ্চিত করুন।`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await generateCommission(profileId, cpMonth);
+      await loadChannelData();
+      toast.success("কমিশন generate হয়েছে");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "কমিশন generate করা যায়নি");
+    }
   };
 
   const handleCommissionPayment = async (e) => {
     e.preventDefault();
     if (!commPayForm.commission_log_id) {
-      window.alert(
-        "কমিশন পেমেন্ট করার আগে একটি finalized কমিশন মাস নির্বাচন করুন।",
-      );
+      toast.error("কমিশন পেমেন্ট করার আগে finalized কমিশন মাস নির্বাচন করুন।");
       return;
     }
-    await recordCommissionPayment(profileId, {
-      commission_log_id: commPayForm.commission_log_id,
-      amount: Number(commPayForm.amount),
-      payment_method: commPayForm.payment_method,
-      payment_date: commPayForm.payment_date,
-      reference_no: commPayForm.reference_no,
-      note: commPayForm.note,
-    });
-    setShowCommissionPay(false);
-    setCommPayForm({
-      commission_log_id: null,
-      commission_month: "",
-      closing_balance: 0,
-      amount: "",
-      payment_date: getDhakaDateYmd(),
-      payment_method: "Cash",
-      reference_no: "",
-      note: "",
-    });
-    loadChannelData();
+    try {
+      await recordCommissionPayment(profileId, {
+        commission_log_id: commPayForm.commission_log_id,
+        amount: Number(commPayForm.amount),
+        payment_method: commPayForm.payment_method,
+        payment_date: commPayForm.payment_date,
+        reference_no: commPayForm.reference_no,
+        note: commPayForm.note,
+      });
+      setShowCommissionPay(false);
+      setCommPayForm({
+        commission_log_id: null,
+        commission_month: "",
+        closing_balance: 0,
+        amount: "",
+        payment_date: getDhakaDateYmd(),
+        payment_method: "Cash",
+        reference_no: "",
+        note: "",
+      });
+      await loadChannelData();
+      toast.success("কমিশন পেমেন্ট রেকর্ড হয়েছে");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "কমিশন পেমেন্ট সেভ হয়নি");
+    }
   };
 
   const handleAdjustment = async (e) => {
@@ -237,6 +298,100 @@ export const useChannelPartner = (profileId, isChannel) => {
       );
     } finally {
       setImporting(false);
+    }
+  };
+
+  const openCommissionPayment = (log) => {
+    const target =
+      log ||
+      (cpHistory || []).find(
+        (h) => h.status === "finalized" && Number(h.closing_balance || 0) > 0,
+      );
+    if (!target) {
+      toast.error("পেমেন্টযোগ্য finalized কমিশন পাওয়া যায়নি");
+      return;
+    }
+    setCommPayForm({
+      commission_log_id: target.id,
+      commission_month: target.month || "",
+      closing_balance: Number(target.closing_balance || 0),
+      amount: target.closing_balance
+        ? String(Number(target.closing_balance || 0))
+        : "",
+      payment_date: getDhakaDateYmd(),
+      payment_method: "Cash",
+      reference_no: "",
+      note: "",
+    });
+    setShowCommissionPay(true);
+  };
+
+  const handleImportCatalog = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setImportingCatalog(true);
+      try {
+        const res = await importChannelProducts(file);
+        const rows = await listChannelProducts(true);
+        setCpProductCatalog(Array.isArray(rows) ? rows : []);
+        toast.success(
+          `ক্যাটালগ ইম্পোর্ট: ${res.created || 0} নতুন, ${res.updated || 0} আপডেট`,
+        );
+        await loadChannelData();
+      } catch (err) {
+        toast.error(
+          err?.response?.data?.message || "প্রোডাক্ট ক্যাটালগ ইম্পোর্ট ব্যর্থ",
+        );
+      } finally {
+        setImportingCatalog(false);
+      }
+    };
+    input.click();
+  };
+
+  const handleEditUserProducts = async (user) => {
+    setShowUserProducts(user);
+    setUserProductsLoading(true);
+    setUserProductsUsage([]);
+    try {
+      const data = await getUserProducts(profileId, user.id, cpMonth);
+      if (Array.isArray(data?.catalog) && data.catalog.length) {
+        setCpProductCatalog(data.catalog);
+      }
+      setUserProductsUsage(data?.usage || []);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "ইউজার প্রোডাক্ট লোড করা যায়নি",
+      );
+      setShowUserProducts(null);
+    } finally {
+      setUserProductsLoading(false);
+    }
+  };
+
+  const closeUserProductsModal = () => {
+    setShowUserProducts(null);
+    setUserProductsUsage([]);
+  };
+
+  const handleSaveUserProducts = async ({ month, items }) => {
+    if (!showUserProducts?.id) return;
+    setSavingUserProducts(true);
+    try {
+      await saveUserProducts(profileId, showUserProducts.id, { month, items });
+      closeUserProductsModal();
+      await loadChannelData();
+      toast.success("প্রোডাক্ট বরাদ্দ সেভ হয়েছে");
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "প্রোডাক্ট সেভ করা যায়নি",
+      );
+    } finally {
+      setSavingUserProducts(false);
     }
   };
 
@@ -276,6 +431,14 @@ export const useChannelPartner = (profileId, isChannel) => {
     cpLoading,
     cpUserSearch,
     setCpUserSearch,
+    cpProductSummary,
+    cpProductCatalog,
+    showUserProducts,
+    setShowUserProducts,
+    userProductsUsage,
+    userProductsLoading,
+    savingUserProducts,
+    importingCatalog,
     loadChannelData,
     loadUserPayments,
     // Modal states
@@ -314,5 +477,10 @@ export const useChannelPartner = (profileId, isChannel) => {
     handleFinalize,
     handleImport,
     handleDownloadReport,
+    openCommissionPayment,
+    handleImportCatalog,
+    handleEditUserProducts,
+    handleSaveUserProducts,
+    closeUserProductsModal,
   };
 };

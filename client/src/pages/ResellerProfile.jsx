@@ -29,6 +29,7 @@ import UsersTab from "../components/ResellerProfile/ChannelPartner/UsersTab";
 import CollectionTab from "../components/ResellerProfile/ChannelPartner/CollectionTab";
 import CommissionTab from "../components/ResellerProfile/ChannelPartner/CommissionTab";
 import CPStatementTab from "../components/ResellerProfile/ChannelPartner/CPStatementTab";
+import ProductsTab from "../components/ResellerProfile/ChannelPartner/ProductsTab";
 
 // Modal components
 import PaymentModal from "../components/ResellerProfile/Modals/PaymentModal";
@@ -41,6 +42,7 @@ import EditUserModal from "../components/ResellerProfile/Modals/EditUserModal";
 import CommissionPaymentModal from "../components/ResellerProfile/Modals/CommissionPaymentModal";
 import AdjustmentModal from "../components/ResellerProfile/Modals/AdjustmentModal";
 import ImportModal from "../components/ResellerProfile/Modals/ImportModal";
+import UserProductsModal from "../components/ResellerProfile/Modals/UserProductsModal";
 
 ChartJS.register(
   CategoryScale,
@@ -111,6 +113,7 @@ const ResellerProfile = () => {
     cpCommission,
     cpHistory,
     cpStatement,
+    cpLoading,
     cpUserSearch,
     setCpUserSearch,
     loadChannelData,
@@ -148,7 +151,19 @@ const ResellerProfile = () => {
     handleFinalize,
     handleImport,
     handleDownloadReport,
-  } = useChannelPartner(profileId, isChannel);
+    openCommissionPayment,
+    cpProductSummary,
+    cpProductCatalog,
+    showUserProducts,
+    userProductsUsage,
+    userProductsLoading,
+    savingUserProducts,
+    importingCatalog,
+    handleImportCatalog,
+    handleEditUserProducts,
+    handleSaveUserProducts,
+    closeUserProductsModal,
+  } = useChannelPartner(profileId, isChannel, load);
 
   // Auto-switch tab for channel partners
   useEffect(() => {
@@ -163,8 +178,21 @@ const ResellerProfile = () => {
     }
   }, [data, activeTab]);
 
-  if (loadError) return <div className="p-4 text-danger">{loadError}</div>;
-  if (!data) return <div className="p-4">লোড হচ্ছে...</div>;
+  if (loadError) {
+    return (
+      <div className="container-fluid py-4 reseller-page">
+        <div className="alert alert-danger border-0 shadow-sm">{loadError}</div>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="container-fluid py-4 reseller-page rp-loading-page">
+        <div className="spinner-border text-primary" role="status" aria-hidden="true" />
+        <span>প্রোফাইল লোড হচ্ছে...</span>
+      </div>
+    );
+  }
 
   const can = data?.permissions || {};
   const reseller = data?.reseller || {};
@@ -175,7 +203,7 @@ const ResellerProfile = () => {
 
   return (
     <div className="container-fluid py-3 reseller-page">
-      {stats.pending_bill_warning && (
+      {!isChannel && stats.pending_bill_warning && (
         <div className="alert alert-warning border-0 shadow-sm mb-3">
           <i className="fas fa-exclamation-triangle text-warning me-2" />
           {stats.pending_bill_warning}
@@ -185,8 +213,10 @@ const ResellerProfile = () => {
       <ProfileHeader
         reseller={reseller}
         can={can}
+        isChannel={isChannel}
         onPaymentClick={() => setShowPay(true)}
         onDiscountClick={() => setShowDiscount(true)}
+        onCommissionPayClick={() => openCommissionPayment()}
       />
 
       <ProfileStats
@@ -195,11 +225,12 @@ const ResellerProfile = () => {
         stats={stats}
         reseller={reseller}
         cpCommission={cpCommission}
+        cpLoading={cpLoading}
         onBillHistoryClick={() => setShowBillHistory(true)}
       />
 
       <div className="row g-3">
-        <div className="col-lg-4">
+        <div className="col-12 col-lg-4 rp-order-side">
           <ProfileDetails
             reseller={reseller}
             can={can}
@@ -207,10 +238,11 @@ const ResellerProfile = () => {
           />
         </div>
 
-        <div className="col-lg-8">
-          <div className="card">
-            <div className="card-header border-0 bg-transparent p-3 d-flex justify-content-between align-items-center">
-              <ul className="nav nav-pills card-header-pills flex-wrap">
+        <div className="col-12 col-lg-8 rp-order-main">
+          <div className="card rp-tabs-card">
+            <div className="card-header border-0 bg-transparent p-2 p-sm-3">
+              <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
+                <ul className="nav nav-pills rp-tabs-scroll flex-nowrap mb-0">
                 {reseller.partner_type !== "channel_partner" && (
                   <li className="nav-item">
                     <button
@@ -238,6 +270,16 @@ const ResellerProfile = () => {
                       onClick={() => setActiveTab("cp_collection")}
                     >
                       কালেকশন
+                    </button>
+                  </li>
+                )}
+                {isChannel && can.can_view_financials && (
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_products" ? "active" : ""}`}
+                      onClick={() => setActiveTab("cp_products")}
+                    >
+                      প্রোডাক্ট
                     </button>
                   </li>
                 )}
@@ -279,16 +321,16 @@ const ResellerProfile = () => {
                     Requests
                   </button>
                 </li>
-              </ul>
-              {can.can_view_financials && (
-                <Link
-                  to={`/billing-logs?reseller_id=${reseller.id}`}
-                  className="btn btn-xs btn-outline-primary rounded-pill px-2"
-                  style={{ fontSize: 11 }}
-                >
-                  View All
-                </Link>
-              )}
+                </ul>
+                {can.can_view_financials && (
+                  <Link
+                    to={`/billing-logs?reseller_id=${reseller.id}`}
+                    className="btn btn-sm btn-outline-primary rounded-pill px-3 flex-shrink-0 align-self-sm-center"
+                  >
+                    View All
+                  </Link>
+                )}
+              </div>
             </div>
 
             <div className="card-body p-0">
@@ -337,8 +379,23 @@ const ResellerProfile = () => {
                 />
               )}
 
+              {activeTab === "cp_products" && isChannel && can.can_view_financials && (
+                <ProductsTab
+                  cpUsers={cpUsers}
+                  cpMonth={cpMonth}
+                  setCpMonth={setCpMonth}
+                  cpProductSummary={cpProductSummary}
+                  onEditUserProducts={handleEditUserProducts}
+                  onImportCatalog={handleImportCatalog}
+                  importingCatalog={importingCatalog}
+                />
+              )}
+
               {activeTab === "cp_commission" && isChannel && (
                 <CommissionTab
+                  cpMonth={cpMonth}
+                  setCpMonth={setCpMonth}
+                  cpCommission={cpCommission}
                   cpHistory={cpHistory}
                   onGenerateCommission={handleGenerateCommission}
                   onCommissionPayment={(log) => {
@@ -479,6 +536,30 @@ const ResellerProfile = () => {
           onImport={handleImport}
           onClose={() => setShowImport(false)}
         />
+      )}
+
+      {showUserProducts && !userProductsLoading && (
+        <UserProductsModal
+          user={showUserProducts}
+          month={cpMonth}
+          catalog={cpProductCatalog}
+          initialUsage={userProductsUsage}
+          onSave={handleSaveUserProducts}
+          onClose={closeUserProductsModal}
+          saving={savingUserProducts}
+        />
+      )}
+
+      {showUserProducts && userProductsLoading && (
+        <div
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+          style={{ background: "rgba(0,0,0,0.25)", zIndex: 1050 }}
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="spinner-border text-light" />
+        </div>
       )}
     </div>
   );

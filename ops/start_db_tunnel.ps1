@@ -22,6 +22,7 @@ $args = @(
   'speeuvmq',
   '-pw',
   'Speednet@2015#',
+  '-hostkey', 'SHA256:/sbt3HuY0mLj/N5SX1x/BGX2j8xvTiZuiwHOkZXUZc0',
   '-N',
   '-L',
   '5433:127.0.0.1:5432',
@@ -36,6 +37,7 @@ if ($useSshKey -and $sshExe) {
     '-p', '21098',
     '-i', $sshKeyFile,
     '-o', 'BatchMode=yes',
+    '-o', 'StrictHostKeyChecking=accept-new',
     '-o', 'ServerAliveInterval=60',
     'speeuvmq@199.188.200.186'
   )

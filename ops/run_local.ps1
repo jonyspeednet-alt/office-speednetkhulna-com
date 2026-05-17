@@ -19,8 +19,35 @@ $backendPidFile = Join-Path $logDir 'backend-local.pid'
 $frontendPidFile = Join-Path $logDir 'frontend-local.pid'
 
 $portableNode = Join-Path $root 'tools\node\node-v20.11.1-win-x64'
+if (-not (Test-Path (Join-Path $portableNode 'node.exe'))) {
+  # Fallback to hidden codex runtime if found
+  $codexNode = Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin'
+  if (Test-Path (Join-Path $codexNode 'node.exe')) {
+    $portableNode = $codexNode
+  }
+}
+
 if (Test-Path (Join-Path $portableNode 'node.exe')) {
   $env:Path = "$portableNode;$env:Path"
+}
+
+function Get-NpmCommand($workingDir, $script) {
+  $npm = Get-Command npm -ErrorAction SilentlyContinue
+  if ($npm) {
+    return "npm run $script"
+  }
+  
+  # Fallback: run binaries directly via node if npm is missing
+  if ($script -eq "dev") {
+    if ($workingDir -like "*server*") {
+      $nodemon = Join-Path $workingDir "node_modules\nodemon\bin\nodemon.js"
+      if (Test-Path $nodemon) { return "node `"$nodemon`" index.js" }
+    } elseif ($workingDir -like "*client*") {
+      $vite = Join-Path $workingDir "node_modules\vite\bin\vite.js"
+      if (Test-Path $vite) { return "node `"$vite`"" }
+    }
+  }
+  return "npm run $script" # Last resort
 }
 
 function Test-LocalPort($port) {
@@ -76,7 +103,8 @@ else {
 }
 
 if (-not (Test-LocalPort 5001)) {
-  $backend = Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "set APP_ENV=local && npm run dev" -WorkingDirectory $serverDir -RedirectStandardOutput $backendLog -RedirectStandardError $backendErr -PassThru
+  $cmd = Get-NpmCommand $serverDir "dev"
+  $backend = Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "set APP_ENV=local && $cmd" -WorkingDirectory $serverDir -RedirectStandardOutput $backendLog -RedirectStandardError $backendErr -PassThru
   $backend.Id | Out-File -FilePath $backendPidFile -Encoding ascii
 }
 else {
@@ -84,7 +112,8 @@ else {
 }
 
 if (-not (Test-LocalPort 5173)) {
-  $frontend = Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "npm run dev" -WorkingDirectory $clientDir -RedirectStandardOutput $frontendLog -RedirectStandardError $frontendErr -PassThru
+  $cmd = Get-NpmCommand $clientDir "dev"
+  $frontend = Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList '/c', "$cmd" -WorkingDirectory $clientDir -RedirectStandardOutput $frontendLog -RedirectStandardError $frontendErr -PassThru
   $frontend.Id | Out-File -FilePath $frontendPidFile -Encoding ascii
 }
 else {

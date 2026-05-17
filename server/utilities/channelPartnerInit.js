@@ -296,6 +296,55 @@ const initChannelPartnerTables = async () => {
       )
     `);
 
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_products (
+        id SERIAL PRIMARY KEY,
+        product_code VARCHAR(100) NOT NULL UNIQUE,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(120) DEFAULT '',
+        unit_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+        unit VARCHAR(40) DEFAULT 'pcs',
+        sort_order INT DEFAULT 0,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await runQuery(
+      "CREATE INDEX IF NOT EXISTS idx_channel_products_active ON channel_products (is_active)",
+    );
+
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_user_product_usage (
+        id SERIAL PRIMARY KEY,
+        reseller_id INT NOT NULL,
+        user_id INT NOT NULL,
+        product_id INT NOT NULL,
+        service_month DATE NOT NULL,
+        quantity NUMERIC(12,2) NOT NULL DEFAULT 1,
+        unit_price_snapshot NUMERIC(12,2) NOT NULL DEFAULT 0,
+        line_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+        note TEXT DEFAULT '',
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, product_id, service_month)
+      )
+    `);
+    await runQuery(
+      "CREATE INDEX IF NOT EXISTS idx_cupu_reseller_month ON channel_user_product_usage (reseller_id, service_month)",
+    );
+    await runQuery(
+      "CREATE INDEX IF NOT EXISTS idx_cupu_user_month ON channel_user_product_usage (user_id, service_month)",
+    );
+
+    await runQuery(
+      `ALTER TABLE channel_commission_logs ADD COLUMN IF NOT EXISTS product_deduction NUMERIC(12,2) DEFAULT 0`,
+    );
+    await runQuery(
+      `ALTER TABLE channel_commission_logs ADD COLUMN IF NOT EXISTS partner_advances NUMERIC(12,2) DEFAULT 0`,
+    );
+
     const requiredObjects = await pool.query(`
       SELECT
         EXISTS (

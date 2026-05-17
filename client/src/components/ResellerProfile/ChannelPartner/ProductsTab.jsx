@@ -1,0 +1,153 @@
+import React, { useMemo, useState } from "react";
+import { money } from "../../../utils/formatters";
+
+const ProductsTab = ({
+  cpUsers,
+  cpMonth,
+  setCpMonth,
+  cpProductSummary,
+  onEditUserProducts,
+  onImportCatalog,
+  importingCatalog,
+}) => {
+  const [search, setSearch] = useState("");
+
+  const userTotals = useMemo(() => {
+    const map = {};
+    (cpProductSummary?.by_user || []).forEach((row) => {
+      map[row.user_id] = row;
+    });
+    return map;
+  }, [cpProductSummary]);
+
+  const filteredUsers = cpUsers.filter(
+    (u) =>
+      !search ||
+      u.user_name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.user_id_code?.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  return (
+    <section className="p-2 p-sm-3">
+      <section className="row g-2 g-md-3 mb-3">
+        <section className="col-12 col-md-4">
+          <section className="card p-3 border-0 bg-primary bg-opacity-10">
+            <small className="text-muted text-uppercase">মোট প্রোডাক্ট কাটা</small>
+            <h4 className="fw-bold text-primary m-0">
+              {money(cpProductSummary?.total_product_deduction)}
+            </h4>
+            <small className="text-muted">পার্টনার কমিশন থেকে বিয়োগ হবে</small>
+          </section>
+        </section>
+        <section className="col-12 col-md-8">
+          <section className="card p-3 h-100">
+            <small className="text-muted d-block mb-2">শীর্ষ প্রোডাক্ট (এই মাস)</small>
+            {(cpProductSummary?.by_product || []).length === 0 ? (
+              <span className="text-muted small">এখনো কোনো প্রোডাক্ট বরাদ্দ নেই</span>
+            ) : (
+              <section className="d-flex flex-wrap gap-2">
+                {cpProductSummary.by_product.slice(0, 6).map((p) => (
+                  <span
+                    key={p.id}
+                    className="badge bg-light text-dark border"
+                    title={p.product_code}
+                  >
+                    {p.name}: {money(p.total_amount)}
+                  </span>
+                ))}
+              </section>
+            )}
+          </section>
+        </section>
+      </section>
+
+      <section className="rp-toolbar mb-3">
+        <section className="d-flex flex-wrap gap-2 align-items-center flex-grow-1">
+          <section className="rp-month-picker">
+            <i className="far fa-calendar-alt text-primary" />
+            <input
+              type="month"
+              value={cpMonth}
+              onChange={(e) => setCpMonth(e.target.value)}
+              aria-label="প্রোডাক্ট মাস"
+            />
+          </section>
+          <input
+            type="search"
+            className="form-control form-control-sm"
+            placeholder="ইউজার খুঁজুন..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ maxWidth: 220 }}
+          />
+        </section>
+        <section className="rp-toolbar-actions">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-success rounded-pill"
+            onClick={onImportCatalog}
+            disabled={importingCatalog}
+          >
+            <i className="fas fa-file-excel me-1" />
+            {importingCatalog ? "ইম্পোর্ট..." : "product.xlsx ইম্পোর্ট"}
+          </button>
+        </section>
+      </section>
+
+      <section className="rp-table-wrap">
+        <table className="table table-hover table-sm align-middle mb-0">
+          <thead className="table-light">
+            <tr>
+              <th>ইউজার</th>
+              <th>আইডি</th>
+              <th className="d-none d-md-table-cell">প্রোডাক্ট সংখ্যা</th>
+              <th>মোট চার্জ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="text-center text-muted py-4">
+                  কোনো ইউজার নেই
+                </td>
+              </tr>
+            ) : (
+              filteredUsers.map((u) => {
+                const t = userTotals[u.id];
+                return (
+                  <tr key={u.id}>
+                    <td className="fw-bold">{u.user_name}</td>
+                    <td>
+                      <span className="badge bg-light text-dark border">
+                        {u.user_id_code || "-"}
+                      </span>
+                    </td>
+                    <td className="d-none d-md-table-cell">
+                      {Number(t?.product_count || 0).toLocaleString("bn-BD")}
+                    </td>
+                    <td className="fw-bold text-danger">
+                      {money(t?.total_amount || 0)}
+                    </td>
+                    <td className="text-end">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary rounded-pill"
+                        onClick={() => onEditUserProducts(u)}
+                      >
+                        <i className="fas fa-box me-1" />
+                        প্রোডাক্ট
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </section>
+    </section>
+  );
+};
+
+export default ProductsTab;
