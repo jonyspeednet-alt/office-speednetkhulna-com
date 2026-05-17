@@ -2092,7 +2092,7 @@ const saveManualProductCharge = async (req, res) => {
            amount = EXCLUDED.amount,
            note = EXCLUDED.note,
            updated_at = NOW()`,
-        [resellerId, month, parsedAmount, String(note || "").trim(), getActor(req)]
+        [resellerId, month, parsedAmount, String(note || "").trim(), req?.user?.id || null]
       );
     }
 
