@@ -103,10 +103,22 @@ const ProductsTab = ({
             style={{ maxWidth: 220 }}
           />
         </section>
-        <section className="rp-toolbar-actions">
+        <section className="rp-toolbar-actions d-flex gap-2">
           <button
             type="button"
-            className="btn btn-sm btn-outline-success rounded-pill"
+            className="btn btn-sm btn-success text-white rounded-pill px-3"
+            onClick={() =>
+              import("../../../utils/excelGenerator").then((m) =>
+                m.downloadProductImportSample(),
+              )
+            }
+          >
+            <i className="fas fa-download me-1" />
+            Sample Excel
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-success rounded-pill px-3"
             onClick={onImportCatalog}
             disabled={importingCatalog}
           >

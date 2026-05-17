@@ -149,7 +149,21 @@ const importProducts = async (req, res) => {
     }
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    const worksheet = workbook.Sheets[sheetName];
+
+    // Detect if first row is a merged "Product" title row by reading header: 1
+    const rowsRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    let rangeOption = 0;
+    if (rowsRaw.length > 1) {
+      const firstRow = rowsRaw[0];
+      const nonEmptyCount = firstRow.filter((cell) => cell !== undefined && cell !== "").length;
+      if (nonEmptyCount === 1 && String(firstRow[0] || "").toLowerCase().includes("product")) {
+        rangeOption = 1; // Skip the "Product" title row
+      }
+    }
+
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+      range: rangeOption,
       defval: "",
     });
 
@@ -159,6 +173,8 @@ const importProducts = async (req, res) => {
 
     for (const row of rows) {
       const name = getSheetValue(row, [
+        "Product Discription",
+        "Product Description",
         "name",
         "product_name",
         "product",
@@ -184,6 +200,7 @@ const importProducts = async (req, res) => {
       const price = roundAmount(
         parseAmount(
           getSheetValue(row, [
+            "Price",
             "unit_price",
             "price",
             "rate",

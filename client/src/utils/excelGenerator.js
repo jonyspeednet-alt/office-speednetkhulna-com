@@ -71,3 +71,37 @@ export const downloadAdvanceImportSample = () => {
 
   XLSX.writeFile(workbook, "partner_advances_sample.xlsx");
 };
+
+/**
+ * Generate and download a sample Excel file for Product Catalog Import
+ */
+export const downloadProductImportSample = () => {
+  const workbook = XLSX.utils.book_new();
+  
+  // Array of arrays representing the layout shown in user image
+  const aoa = [
+    ["Product", "", "", "", ""],
+    ["SL", "Product Discription", "Qty", "Price", "Amount"],
+    [1, "Patch Cord 1/2 Half", 1, 60, 60],
+    [2, "Fiber Cable 4 Core", 100, 12, 1200]
+  ];
+  
+  const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+  
+  // Merge A1 to E1
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }
+  ];
+  
+  // Column widths
+  worksheet["!cols"] = [
+    { wch: 8 },  // SL
+    { wch: 35 }, // Product Discription
+    { wch: 10 }, // Qty
+    { wch: 12 }, // Price
+    { wch: 12 }  // Amount
+  ];
+  
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
+  XLSX.writeFile(workbook, "product_import_sample.xlsx");
+};

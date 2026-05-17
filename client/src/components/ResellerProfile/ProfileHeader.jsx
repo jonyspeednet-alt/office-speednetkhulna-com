@@ -38,7 +38,7 @@ const ProfileHeader = ({ reseller, can, isChannel, onPaymentClick, onDiscountCli
                         <span>Discount</span>
                     </button>
                 )}
-                {!isChannel && can.can_view_invoice && (
+                {((!isChannel && can.can_view_invoice) || (isChannel && can.can_view_financials)) && (
                     <Link to={`/invoice?resellerId=${reseller.id}`} className="btn btn-sm btn-primary rounded-pill px-3 shadow-sm">
                         <i className="fas fa-file-invoice me-1 d-none d-sm-inline" />
                         <span>ইনভয়েস</span>

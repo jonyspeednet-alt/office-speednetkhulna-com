@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { money } from '../../utils/formatters';
+import CPCommissionInvoiceModal from './Modals/CPCommissionInvoiceModal';
 
 const formatMonthLabel = (ym) => {
     if (!ym || !/^\d{4}-\d{2}$/.test(String(ym))) return '';
@@ -55,8 +56,9 @@ const LedgerDivider = ({ label }) => (
     </tr>
 );
 
-const CommissionLedger = ({ summary, profitPct }) => {
+const CommissionLedger = ({ summary, profitPct, reseller }) => {
     const [open, setOpen] = useState(true);
+    const [showInvoice, setShowInvoice] = useState(false);
 
     const gross        = Number(summary.gross_commission   || 0);
     const advances     = Number(summary.partner_advances   || 0);
@@ -90,11 +92,20 @@ const CommissionLedger = ({ summary, profitPct }) => {
                     <i className="fas fa-calculator me-2 text-primary opacity-75" />
                     হিসাব বিবরণ
                 </span>
-                <div className="d-flex align-items-center gap-2">
+                <div className="d-flex align-items-center gap-2" onClick={e => e.stopPropagation()}>
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary rounded-pill px-2.5 py-0.5 fw-semibold d-flex align-items-center gap-1 shadow-none border border-primary border-opacity-25 bg-primary bg-opacity-10 text-primary"
+                        style={{ fontSize: '0.75rem' }}
+                        onClick={() => setShowInvoice(true)}
+                    >
+                        <i className="fas fa-file-invoice" />
+                        ইনভয়েস ভিউ
+                    </button>
                     <span className={`badge ${statusBadge.cls}`} style={{ fontSize: '0.72rem' }}>
                         {statusBadge.label}
                     </span>
-                    <i className={`fas fa-chevron-${open ? 'up' : 'down'} text-muted`} style={{ fontSize: '0.75rem' }} />
+                    <i className={`fas fa-chevron-${open ? 'up' : 'down'} text-muted`} style={{ fontSize: '0.75rem', cursor: 'pointer' }} onClick={() => setOpen(o => !o)} />
                 </div>
             </div>
 
@@ -206,6 +217,14 @@ const CommissionLedger = ({ summary, profitPct }) => {
                     )}
                 </div>
             )}
+            
+            {showInvoice && (
+                <CPCommissionInvoiceModal
+                    reseller={reseller}
+                    summary={summary}
+                    onClose={() => setShowInvoice(false)}
+                />
+            )}
         </div>
     );
 };
@@ -280,7 +299,7 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
                 </div>
 
                 {/* Ledger breakdown */}
-                <CommissionLedger summary={summary} profitPct={profitPct} />
+                <CommissionLedger summary={summary} profitPct={profitPct} reseller={reseller} />
             </div>
         );
     }
