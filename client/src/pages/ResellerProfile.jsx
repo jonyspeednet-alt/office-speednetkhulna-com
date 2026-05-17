@@ -22,7 +22,6 @@ import ProfileDetails from "../components/ResellerProfile/ProfileDetails";
 // Tab components
 import BandwidthTab from "../components/ResellerProfile/Tabs/BandwidthTab";
 import StatementTab from "../components/ResellerProfile/Tabs/StatementTab";
-import RequestsTab from "../components/ResellerProfile/Tabs/RequestsTab";
 
 // Channel Partner components
 import UsersTab from "../components/ResellerProfile/ChannelPartner/UsersTab";
@@ -188,9 +187,7 @@ const ResellerProfile = () => {
       data.reseller?.partner_type === "channel_partner" &&
       activeTab === "bandwidth"
     ) {
-      setActiveTab(
-        data.permissions?.can_view_financials ? "cp_users" : "requests",
-      );
+      setActiveTab("cp_users");
     }
   }, [data, activeTab]);
 
@@ -330,23 +327,7 @@ const ResellerProfile = () => {
                     </button>
                   </li>
                 )}
-                <li className="nav-item">
-                  <button
-                    className={`nav-link btn-sm py-1 px-3 ${activeTab === "requests" ? "active" : ""}`}
-                    onClick={() => setActiveTab("requests")}
-                  >
-                    Requests
-                  </button>
-                </li>
                 </ul>
-                {can.can_view_financials && (
-                  <Link
-                    to={`/billing-logs?reseller_id=${reseller.id}`}
-                    className="btn btn-sm btn-outline-primary rounded-pill px-3 flex-shrink-0 align-self-sm-center"
-                  >
-                    View All
-                  </Link>
-                )}
               </div>
             </div>
 
@@ -449,8 +430,6 @@ const ResellerProfile = () => {
               {activeTab === "cp_statement" && isChannel && (
                 <CPStatementTab cpStatement={cpStatement} />
               )}
-
-              {activeTab === "requests" && <RequestsTab requests={requests} />}
             </div>
           </div>
         </div>

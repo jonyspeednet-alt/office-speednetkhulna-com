@@ -58,19 +58,6 @@ const CommissionTab = ({
             <i className="fas fa-sync-alt me-1" />
             <span>পুনরায় হিসাব করুন</span>
           </button>
-          <button
-            className="btn btn-sm btn-success"
-            onClick={() => latestPayable && onCommissionPayment(latestPayable)}
-            disabled={!latestPayable}
-            title={
-              latestPayable
-                ? `${latestPayable.month} মাসের বকেয়া কমিশন দিন`
-                : "Finalized payable commission নেই"
-            }
-          >
-            <i className="fas fa-money-bill me-1" />
-            কমিশন দিন
-          </button>
         </div>
       </div>
       <div className="rp-table-wrap rp-table-wide d-none d-md-block">

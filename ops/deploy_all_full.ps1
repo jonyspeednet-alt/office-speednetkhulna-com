@@ -137,15 +137,44 @@ function Get-PathFingerprint([string]$basePath, [string[]]$excludeRelativePrefix
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $basePath).Hash.ToLowerInvariant()
 }
 
+$global:RemoteMetaCache = @{}
+$global:RemoteMetaFetched = $false
+
+function Fetch-AllRemoteMeta() {
+  if ($global:RemoteMetaFetched) { return }
+  Write-Host 'Batch retrieving remote metadata...'
+  try {
+    $rawMeta = Invoke-Remote "mkdir -p $deployMetaRemoteDir && cd $deployMetaRemoteDir && head -n 1 * 2>/dev/null || true"
+    $lines = $rawMeta -split "`r?\n"
+    $currentKey = $null
+    foreach ($line in $lines) {
+      $line = $line.Trim()
+      if ($line -match '==>\s*(.+)\s*<==') {
+        $currentKey = $Matches[1]
+      } elseif ($currentKey -and $line) {
+        $global:RemoteMetaCache[$currentKey] = $line
+        $currentKey = $null
+      }
+    }
+    $global:RemoteMetaFetched = $true
+  } catch {
+    Write-Warning "Failed to batch retrieve remote metadata: $($_.Exception.Message)"
+  }
+}
+
 function Get-RemoteMeta([string]$name) {
   $safeName = ($name -replace '[^A-Za-z0-9_.-]', '_')
-  $output = Invoke-Remote "mkdir -p $deployMetaRemoteDir && if [ -f $deployMetaRemoteDir/$safeName ]; then cat $deployMetaRemoteDir/$safeName; fi"
-  return $output.Trim()
+  Fetch-AllRemoteMeta
+  if ($global:RemoteMetaCache.ContainsKey($safeName)) {
+    return $global:RemoteMetaCache[$safeName]
+  }
+  return ""
 }
 
 function Set-RemoteMeta([string]$name, [string]$value) {
   $safeName = ($name -replace '[^A-Za-z0-9_.-]', '_')
   Invoke-Remote "mkdir -p $deployMetaRemoteDir && printf '%s' '$value' > $deployMetaRemoteDir/$safeName"
+  $global:RemoteMetaCache[$safeName] = $value
 }
 
 function Test-RemoteExecutable([string]$path) {
@@ -360,16 +389,30 @@ Invoke-Remote "grep -q '^PUPPETEER_EXECUTABLE_PATH=' $remoteEnvPath || true"
 
 Write-Host '[5/14] Uploading frontend to staging folder...'
 if ($shouldDeployFrontend) {
-  Invoke-Remote "rm -rf $remoteFrontendStage && mkdir -p $remoteFrontendStage/assets"
-  & $pscp -batch -P $Port -pw $Password (Join-Path $distDir 'index.html') "${Server}:$remoteFrontendStage/index.html"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload staged dist/index.html' }
-  & $pscp -batch -r -P $Port -pw $Password (Join-Path $distDir 'assets\*') "${Server}:$remoteFrontendStage/assets/"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload staged dist/assets' }
-  $distRootFiles = Get-ChildItem -Path $distDir -File | Where-Object { $_.Name -ne 'index.html' }
-  foreach ($file in $distRootFiles) {
-    & $pscp -batch -P $Port -pw $Password $file.FullName "${Server}:$remoteFrontendStage/$($file.Name)"
-    if ($LASTEXITCODE -ne 0) { throw "Failed to upload staged dist/$($file.Name)" }
-  }
+  # Copy .htaccess and proxy.php to local dist directory temporarily for bundling
+  $htaccessDest = Join-Path $distDir '.htaccess'
+  $proxyDest = Join-Path $distDir 'proxy.php'
+  Copy-Item -Path $htaccessTemplate -Destination $htaccessDest -Force
+  Copy-Item -Path (Join-Path $root 'ops/proxy.php') -Destination $proxyDest -Force
+
+  $frontendBundlePath = Join-Path $tmpDir 'frontend_bundle.tgz'
+  if (Test-Path $frontendBundlePath) { Remove-Item -Path $frontendBundlePath -Force }
+
+  Write-Host "Creating local frontend archive..."
+  tar.exe -czf $frontendBundlePath --format=ustar -C $distDir .
+  
+  # Clean up local temporary copies immediately
+  Remove-Item -Path $htaccessDest -Force
+  Remove-Item -Path $proxyDest -Force
+
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to create frontend bundle.' }
+
+  Write-Host "Uploading frontend archive..."
+  & $pscp -batch -P $Port -pw $Password $frontendBundlePath "${Server}:$remoteTmp/frontend_bundle.tgz"
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload frontend bundle' }
+
+  Write-Host "Extracting frontend on remote server..."
+  Invoke-Remote "rm -rf $remoteFrontendStage && mkdir -p $remoteFrontendStage && cd $remoteFrontendStage && tar -xzf $remoteTmp/frontend_bundle.tgz && rm -f $remoteTmp/frontend_bundle.tgz"
 } else {
   Write-Host 'Skipped frontend upload (unchanged source).'
 }
@@ -377,7 +420,7 @@ if ($shouldDeployFrontend) {
 Write-Host '[6/14] Swapping frontend atomically...'
 if ($shouldDeployFrontend) {
   Invoke-Remote "mkdir -p $RemoteRoot/client/dist && rm -rf $RemoteRoot/client/dist/* && cp -a $remoteFrontendStage/. $RemoteRoot/client/dist/ && rm -rf $remoteFrontendStage"
-  Invoke-Remote "mkdir -p $officeDomainRoot && find $officeDomainRoot -maxdepth 1 -type l \( -name index.html -o -name assets -o -name logo-b.png -o -name brand-logo.svg -o -name speednet_logo.png \) -delete && rm -rf $officeDomainRoot/assets && cp -a $RemoteRoot/client/dist/. $officeDomainRoot/ && chmod 644 $officeDomainRoot/index.html && find $officeDomainRoot/assets -type f -exec chmod 644 {} \; && find $officeDomainRoot/assets -type d -exec chmod 755 {} \;"
+  Invoke-Remote "mkdir -p $officeDomainRoot && find $officeDomainRoot -maxdepth 1 -type l \( -name index.html -o -name assets -o -name logo-b.png -o -name brand-logo.svg -o -name speednet_logo.png -o -name proxy.php -o -name .htaccess \) -delete && rm -rf $officeDomainRoot/assets && cp -a $RemoteRoot/client/dist/. $officeDomainRoot/ && chmod 644 $officeDomainRoot/index.html && chmod 644 $officeDomainRoot/.htaccess && chmod 644 $officeDomainRoot/proxy.php && find $officeDomainRoot/assets -type f -exec chmod 644 {} \; && find $officeDomainRoot/assets -type d -exec chmod 755 {} \;"
   Set-RemoteMeta 'frontend.sha256' $frontendInputHash
 } else {
   Write-Host 'Skipped frontend swap (unchanged source).'
@@ -394,11 +437,7 @@ if ($shouldDeployBackend) {
   Write-Host 'Skipped backend upload/extract (unchanged source).'
 }
 
-Write-Host '[8/14] Domain routing hardening (.htaccess + uploads symlink)...'
-& $pscp -batch -P $Port -pw $Password $htaccessTemplate "${Server}:$officeDomainRoot/.htaccess"
-if ($LASTEXITCODE -ne 0) { throw 'Failed to upload office domain .htaccess template' }
-& $pscp -batch -P $Port -pw $Password "$PSScriptRoot\proxy.php" "${Server}:$officeDomainRoot/proxy.php"
-if ($LASTEXITCODE -ne 0) { throw 'Failed to upload proxy.php' }
+Write-Host '[8/14] Domain routing hardening (uploads symlink)...'
 Invoke-Remote "if [ -e $officeDomainRoot/uploads ] && [ ! -L $officeDomainRoot/uploads ]; then mv $officeDomainRoot/uploads $officeDomainRoot/uploads_backup_$stamp; fi; ln -sfn $RemoteRoot/uploads $officeDomainRoot/uploads"
 Invoke-Remote "echo 'ok' > $RemoteRoot/uploads/health-check.txt && chmod 664 $RemoteRoot/uploads/health-check.txt"
 
@@ -779,18 +818,36 @@ $scriptsReason = if ($ForceScripts) {
 }
 
 if ($shouldDeployScripts) {
-  & $pscp -batch -P $Port -pw $Password $switchLocalPath "${Server}:$switchRemotePath"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload switch_api_upstream script' }
-  & $pscp -batch -P $Port -pw $Password $watchdogLocalPath "${Server}:$watchdogRemotePath"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload watchdog script' }
-  & $pscp -batch -P $Port -pw $Password $syntheticLocalPath "${Server}:$syntheticRemotePath"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload synthetic monitor script' }
-  & $pscp -batch -P $Port -pw $Password $projectedBillsSyncLocalPath "${Server}:$projectedBillsSyncRemotePath"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload projected bill sync script' }
-  & $pscp -batch -P $Port -pw $Password $autoFinalizeLocalPath "${Server}:$autoFinalizeRemotePath"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload auto finalize script' }
-  & $pscp -batch -P $Port -pw $Password $dailyReportLocalPath "${Server}:$dailyReportRemotePath"
-  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload uptime daily report script' }
+  $scriptsTmpDir = Join-Path $tmpDir 'scripts_staging'
+  if (Test-Path $scriptsTmpDir) { Remove-Item -Path $scriptsTmpDir -Recurse -Force }
+  New-Item -Path $scriptsTmpDir -ItemType Directory | Out-Null
+
+  # Copy generated scripts to the temporary folder with their target names
+  Copy-Item -Path $switchLocalPath -Destination (Join-Path $scriptsTmpDir 'switch_api_upstream.sh') -Force
+  Copy-Item -Path $watchdogLocalPath -Destination (Join-Path $scriptsTmpDir 'office_health_watchdog.sh') -Force
+  Copy-Item -Path $syntheticLocalPath -Destination (Join-Path $scriptsTmpDir 'synthetic_30s_monitor.sh') -Force
+  Copy-Item -Path $projectedBillsSyncLocalPath -Destination (Join-Path $scriptsTmpDir 'sync_projected_bills.sh') -Force
+  Copy-Item -Path $autoFinalizeLocalPath -Destination (Join-Path $scriptsTmpDir 'auto_finalize_month_end.sh') -Force
+  Copy-Item -Path $dailyReportLocalPath -Destination (Join-Path $scriptsTmpDir 'uptime_daily_report.sh') -Force
+
+  $scriptsBundlePath = Join-Path $tmpDir 'scripts_bundle.tgz'
+  if (Test-Path $scriptsBundlePath) { Remove-Item -Path $scriptsBundlePath -Force }
+
+  Write-Host "Creating local scripts archive..."
+  tar.exe -czf $scriptsBundlePath --format=ustar -C $scriptsTmpDir .
+  
+  # Clean up local temporary copies immediately
+  Remove-Item -Path $scriptsTmpDir -Recurse -Force
+
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to create scripts bundle.' }
+
+  Write-Host "Uploading scripts archive..."
+  & $pscp -batch -P $Port -pw $Password $scriptsBundlePath "${Server}:$remoteTmp/scripts_bundle.tgz"
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to upload scripts bundle' }
+
+  Write-Host "Extracting scripts on remote server..."
+  Invoke-Remote "cd $RemoteRoot && tar -xzf $remoteTmp/scripts_bundle.tgz -C $RemoteRoot/scripts/ && rm -f $remoteTmp/scripts_bundle.tgz"
+
   Invoke-Remote "[ -f $monitorEnvRemotePath ] || cat > $monitorEnvRemotePath <<'EOF'
 $monitorEnv
 EOF"

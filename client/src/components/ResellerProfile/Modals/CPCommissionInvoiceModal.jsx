@@ -173,7 +173,7 @@ const CPCommissionInvoiceModal = ({ reseller, summary, onClose }) => {
                 <tbody>
                   <tr>
                     <td className="py-3 px-3 border-bottom border-end fw-semibold">
-                      কমিশন (গ্রাহক বিল কালেকশন {money(summary.total_collected)} × {profitPct}%)
+                      কমিশন (গ্রাহক বিল কালেকশন {money(summary.total_realized)} × {profitPct}%)
                     </td>
                     <td className="py-3 px-3 border-bottom text-end text-success fw-bold font-monospace">
                       {money(gross)}
@@ -247,6 +247,63 @@ const CPCommissionInvoiceModal = ({ reseller, summary, onClose }) => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* গ্রাহক কালেকশন ও হিসাব বিবরণী (Customer Collection Summary) */}
+            <div className="mt-5">
+              <div className="d-flex align-items-center gap-2 border-bottom pb-2 mb-3">
+                <i className="fas fa-users text-primary" style={{ fontSize: '1.1rem' }} />
+                <h6 className="fw-bold text-dark m-0" style={{ fontSize: '0.92rem' }}>
+                  গ্রাহক কালেকশন ও বিল বিবরণী (Customer Collection & Bill Summary)
+                </h6>
+              </div>
+              <div className="table-responsive">
+                <table className="inv-table w-100" style={{ fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr className="bg-light">
+                      <th className="py-2 px-3 border-bottom border-end text-muted" style={{ fontWeight: 600 }}>হিসাব খাত (Account Head)</th>
+                      <th className="py-2 px-3 border-bottom border-end text-center text-muted" style={{ fontWeight: 600 }}>গ্রাহক সংখ্যা (Count)</th>
+                      <th className="py-2 px-3 border-bottom text-end text-muted" style={{ fontWeight: 600 }}>টাকার পরিমাণ (Amount)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="py-2.5 px-3 border-bottom border-end">মোট গ্রাহক দাবি (Total Billing Due)</td>
+                      <td className="py-2.5 px-3 border-bottom border-end text-center font-monospace text-muted">
+                        {summary.total_users?.toLocaleString('bn-BD')} জন
+                      </td>
+                      <td className="py-2.5 px-3 border-bottom text-end font-monospace">
+                        {money(summary.total_due)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2.5 px-3 border-bottom border-end text-success fw-semibold">আদায়কৃত গ্রাহক বিল (Paid Collection)</td>
+                      <td className="py-2.5 px-3 border-bottom border-end text-center text-success font-monospace fw-semibold">
+                        {summary.paying_users?.toLocaleString('bn-BD')} জন পেমেন্ট
+                      </td>
+                      <td className="py-2.5 px-3 border-bottom text-end text-success font-monospace fw-semibold">
+                        {money(summary.total_collected)}
+                      </td>
+                    </tr>
+                    <tr style={{ background: '#f8fafc' }}>
+                      <td className="py-2.5 px-3 border-bottom border-end text-primary fw-bold">কমিশনযোগ্য বিল (Realized Amount)</td>
+                      <td className="py-2.5 px-3 border-bottom border-end text-center text-muted font-monospace">-</td>
+                      <td className="py-2.5 px-3 border-bottom text-end text-primary font-monospace fw-bold">
+                        {money(summary.total_realized)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2.5 px-3 border-bottom border-end text-danger">গ্রাহক বকেয়া বিল (Deferred Amount)</td>
+                      <td className="py-2.5 px-3 border-bottom border-end text-center text-danger font-monospace">
+                        {summary.non_paying_users?.toLocaleString('bn-BD')} জন বকেয়া
+                      </td>
+                      <td className="py-2.5 px-3 border-bottom text-end text-danger font-monospace">
+                        {money(summary.total_deferred)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="row mt-4 justify-content-end">
