@@ -12,8 +12,9 @@ const AdjustmentModal = ({ adjForm, setAdjForm, onSubmit, onClose }) => {
                         value={adjForm.type}
                         onChange={(e) => setAdjForm({ ...adjForm, type: e.target.value })}
                     >
-                        <option value="adjustment">সমন্বয় (Adjustment)</option>
-                        <option value="deduction">কর্তন (Deduction)</option>
+                        <option value="adjustment">সমন্বয় (Adjustment Bonus)</option>
+                        <option value="deduction">সাধারণ কর্তন (Other Deduction)</option>
+                        <option value="partner_collected">পার্টনার কর্তৃক সরাসরি বিল সংগ্রহ (Deduction)</option>
                     </select>
                 </div>
                 <div className="col-md-6">

@@ -230,19 +230,12 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
   };
 
   const handleGenerateCommission = async () => {
-    if (
-      !window.confirm(
-        `${cpMonth} মাসের জন্য কমিশন generate করতে চান? আগে কালেকশন ইনিশিয়ালাইজ/আপডেট হয়েছে কিনা নিশ্চিত করুন।`,
-      )
-    ) {
-      return;
-    }
     try {
       await generateCommission(profileId, cpMonth);
       await loadChannelData();
-      toast.success("কমিশন generate হয়েছে");
+      toast.success("কমিশন জেনারেট ও আপডেট সম্পন্ন হয়েছে");
     } catch (err) {
-      toast.error(err?.response?.data?.message || "কমিশন generate করা যায়নি");
+      toast.error(err?.response?.data?.message || "কমিশন জেনারেট করা যায়নি");
     }
   };
 

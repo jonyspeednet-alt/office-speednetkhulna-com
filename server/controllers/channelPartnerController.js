@@ -385,6 +385,12 @@ const initMonthlyPayments = async (req, res) => {
       [resellerId, month],
     );
 
+    try {
+      await generateCommissionInternal(resellerId, month);
+    } catch (ce) {
+      console.warn("Commission sync after initialization failed:", ce.message);
+    }
+
     res.json({
       message: "Monthly payments initialized",
       month,
@@ -456,6 +462,12 @@ const recordUserPayment = async (req, res) => {
         note || "",
       ],
     );
+
+    try {
+      await generateCommissionInternal(resellerId, month);
+    } catch (ce) {
+      console.warn("Commission sync after payment record failed:", ce.message);
+    }
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -534,6 +546,13 @@ const bulkRecordPayments = async (req, res) => {
       }
 
       await client.query("COMMIT");
+
+      try {
+        await generateCommissionInternal(resellerId, month);
+      } catch (ce) {
+        console.warn("Commission sync after bulk payments failed:", ce.message);
+      }
+
       res.json({ message: "Payments recorded", count: payments.length });
     } catch (err) {
       await client.query("ROLLBACK");
@@ -657,6 +676,8 @@ const getCommissionSummary = async (req, res) => {
       product_deduction: productDeduction,
       adjustments: Number(commissionLog?.adjustments || 0),
       deductions: Number(commissionLog?.deductions || 0),
+      adjustment_note: commissionLog?.adjustment_note || "",
+      deduction_note: commissionLog?.deduction_note || "",
       net_commission: commissionLog
         ? Number(commissionLog.net_commission)
         : roundAmountHelper(
@@ -843,10 +864,15 @@ const adjustCommission = async (req, res) => {
     }
 
     const amt = parseAmount(amount, 0);
-    const isDeduction = type === "deduction";
+    const isDeduction = type === "deduction" || type === "partner_collected";
 
     const updateField = isDeduction ? "deductions" : "adjustments";
     const noteField = isDeduction ? "deduction_note" : "adjustment_note";
+
+    let finalNote = note || "";
+    if (type === "partner_collected") {
+      finalNote = `[পার্টনার বিল কালেকশন] ${finalNote}`.trim();
+    }
 
     const result = await pool.query(
       `UPDATE channel_commission_logs
@@ -869,7 +895,7 @@ const adjustCommission = async (req, res) => {
            updated_at = NOW()
        WHERE id = $3 AND reseller_id = $4 AND status = 'draft'
        RETURNING *`,
-      [amt, note || "", logId, resellerId],
+      [amt, finalNote, logId, resellerId],
     );
 
     if (!result.rows.length) {
@@ -1430,6 +1456,12 @@ const importPartnerAdvances = async (req, res) => {
       }
 
       await client.query("COMMIT");
+
+      try {
+        await generateCommissionInternal(resellerId, month);
+      } catch (ce) {
+        console.warn("Commission sync after advance import failed:", ce.message);
+      }
 
       res.json({
         message: "Partner advances imported successfully",

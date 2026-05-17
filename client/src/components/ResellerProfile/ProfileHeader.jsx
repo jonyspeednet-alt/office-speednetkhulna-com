@@ -25,12 +25,7 @@ const ProfileHeader = ({ reseller, can, isChannel, onPaymentClick, onDiscountCli
                         <span>কমিশন পেমেন্ট</span>
                     </button>
                 )}
-                {can.can_add_payment && (
-                    <button type="button" className="btn btn-sm btn-danger text-white rounded-pill px-3 shadow-sm" onClick={onProductChargeClick}>
-                        <i className="fas fa-box me-1 d-none d-sm-inline" />
-                        <span>প্রোডাক্ট চার্জ</span>
-                    </button>
-                )}
+
                 {!isChannel && can.can_add_payment && (
                     <button type="button" className="btn btn-sm btn-warning text-dark rounded-pill px-3 shadow-sm" onClick={onPaymentClick}>
                         <i className="fas fa-hand-holding-usd me-1 d-none d-sm-inline" />

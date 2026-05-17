@@ -52,11 +52,11 @@ const CommissionTab = ({
         <div className="rp-toolbar-actions">
           <button
             type="button"
-            className="btn btn-sm btn-primary rounded-pill"
+            className="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm"
             onClick={onGenerateCommission}
           >
-            <i className="fas fa-calculator me-1" />
-            <span className="d-none d-sm-inline">কমিশন </span>Generate
+            <i className="fas fa-sync-alt me-1" />
+            <span>পুনরায় হিসাব করুন</span>
           </button>
           <button
             className="btn btn-sm btn-success"
