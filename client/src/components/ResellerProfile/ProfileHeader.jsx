@@ -1,14 +1,15 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { partnerTypeLabel } from '../../utils/formatters';
 
-const ProfileHeader = ({ reseller, can, isChannel, onPaymentClick, onDiscountClick, onCommissionPayClick }) => {
+const ProfileHeader = ({ reseller, can, isChannel, onPaymentClick, onDiscountClick, onProductChargeClick, onCommissionPayClick }) => {
+    const navigate = useNavigate();
     return (
         <div className="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center mb-3 rp-profile-header">
             <div className="d-flex align-items-center gap-2 rp-title-block min-w-0">
-                <Link to="/reseller-list" className="btn btn-light rounded-circle shadow-sm flex-shrink-0" aria-label="রিসেলার তালিকায় ফিরুন">
+                <button type="button" onClick={() => navigate(-1)} className="btn btn-light rounded-circle shadow-sm flex-shrink-0" aria-label="রিসেলার তালিকায় ফিরুন">
                     <i className="fas fa-arrow-left" />
-                </Link>
+                </button>
                 <div className="min-w-0">
                     <h4 className="fw-bold m-0 text-truncate">{reseller.name}</h4>
                     <div className="d-flex flex-wrap align-items-center gap-1 mt-1">
@@ -22,6 +23,12 @@ const ProfileHeader = ({ reseller, can, isChannel, onPaymentClick, onDiscountCli
                     <button type="button" className="btn btn-sm btn-success rounded-pill px-3 shadow-sm" onClick={onCommissionPayClick}>
                         <i className="fas fa-money-bill me-1 d-none d-sm-inline" />
                         <span>কমিশন পেমেন্ট</span>
+                    </button>
+                )}
+                {can.can_add_payment && (
+                    <button type="button" className="btn btn-sm btn-danger text-white rounded-pill px-3 shadow-sm" onClick={onProductChargeClick}>
+                        <i className="fas fa-box me-1 d-none d-sm-inline" />
+                        <span>প্রোডাক্ট চার্জ</span>
                     </button>
                 )}
                 {!isChannel && can.can_add_payment && (

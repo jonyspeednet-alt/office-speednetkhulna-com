@@ -18,6 +18,7 @@ export const useResellerProfile = (profileId) => {
   // Modal visibility states
   const [showPay, setShowPay] = useState(false);
   const [showDiscount, setShowDiscount] = useState(false);
+  const [showProductCharge, setShowProductCharge] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showBillHistory, setShowBillHistory] = useState(false);
   const [showRateChange, setShowRateChange] = useState(false);
@@ -31,6 +32,10 @@ export const useResellerProfile = (profileId) => {
   const [discountAmount, setDiscountAmount] = useState("");
   const [discountDate, setDiscountDate] = useState(getDhakaDateYmd());
   const [discountNote, setDiscountNote] = useState("");
+
+  const [productChargeAmount, setProductChargeAmount] = useState("");
+  const [productChargeDate, setProductChargeDate] = useState(getDhakaDateYmd());
+  const [productChargeNote, setProductChargeNote] = useState("");
 
   const [editForm, setEditForm] = useState(null);
   const [rateChangeForm, setRateChangeForm] = useState(null);
@@ -155,6 +160,28 @@ export const useResellerProfile = (profileId) => {
     }
   };
 
+  const submitProductCharge = async (e) => {
+    e.preventDefault();
+    if (!Number(productChargeAmount)) return;
+    try {
+      const note = `Product Charge: ${Number(productChargeAmount).toFixed(2)} Tk.${productChargeNote ? ` Note: ${productChargeNote}` : ""}`;
+      await addBillingLog({
+        reseller_id: profileId,
+        log_type: "product",
+        amount: Number(productChargeAmount),
+        note,
+        effective_date: `${productChargeDate}T${new Date().toTimeString().slice(0, 8)}`,
+      });
+      toast.success("প্রোডাক্ট চার্জ সফলভাবে যুক্ত হয়েছে!");
+      setShowProductCharge(false);
+      setProductChargeAmount("");
+      setProductChargeNote("");
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "প্রোডাক্ট চার্জ যোগ করতে সমস্যা হয়েছে");
+    }
+  };
+
   const saveProfile = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -251,6 +278,16 @@ export const useResellerProfile = (profileId) => {
     discountNote,
     setDiscountNote,
     submitDiscount,
+    // Product Charge form
+    showProductCharge,
+    setShowProductCharge,
+    productChargeAmount,
+    setProductChargeAmount,
+    productChargeDate,
+    setProductChargeDate,
+    productChargeNote,
+    setProductChargeNote,
+    submitProductCharge,
     // Edit form
     editForm,
     setEditForm,

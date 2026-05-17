@@ -58,7 +58,11 @@ const addBillingLog = async (req, res) => {
                     actor.actorId, 
                     actor.actorName, 
                     actor.actorRole, 
-                    finalLogType === 'discount' ? 'add_discount' : 'add_payment',
+                    finalLogType === 'discount' 
+                        ? 'add_discount' 
+                        : (finalLogType === 'product' || finalLogType === 'product_charge') 
+                            ? 'add_product_charge' 
+                            : 'add_payment',
                     'billing_logs',
                     logResult.rows[0].id,
                     finalAmount,
@@ -178,10 +182,11 @@ const finalizeResellerBill = async (client, { resellerId, monthYm, adjustment, a
     const financialSummary = await client.query(
         `SELECT 
             (SELECT COALESCE(SUM(amount + adjustment), 0) FROM monthly_bills WHERE reseller_id = $1 AND bill_month < $2::date) AS total_billed,
+            (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND effective_date < $2::date AND log_type IN ('product', 'product_charge', 'charge')) AS total_product_charges,
             (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND effective_date < $2::date AND log_type IN ('payment', 'discount')) AS total_paid`,
         [resellerId, info.monthStartStr]
     );
-    const previousDue = Number(financialSummary.rows[0].total_billed) - Number(financialSummary.rows[0].total_paid);
+    const previousDue = Number(financialSummary.rows[0].total_billed) + Number(financialSummary.rows[0].total_product_charges) - Number(financialSummary.rows[0].total_paid);
 
     // 5. Insert into monthly_bills
     const billResult = await client.query(
@@ -331,7 +336,8 @@ const getMonthlySummary = async (req, res) => {
         const logsResult = await pool.query(
             `SELECT reseller_id, 
                     SUM(CASE WHEN log_type IN ('payment', 'collection') THEN transaction_amount ELSE 0 END) AS paid,
-                    SUM(CASE WHEN log_type = 'discount' THEN transaction_amount ELSE 0 END) AS discount
+                    SUM(CASE WHEN log_type = 'discount' THEN transaction_amount ELSE 0 END) AS discount,
+                    SUM(CASE WHEN log_type IN ('product', 'product_charge', 'charge') THEN transaction_amount ELSE 0 END) AS product_charges
              FROM billing_logs 
              WHERE TO_CHAR(effective_date, 'YYYY-MM') = $1
              GROUP BY reseller_id`,
@@ -360,7 +366,7 @@ const getMonthlySummary = async (req, res) => {
 
         const rowPromises = resellers.map(async (r) => {
             const bill = billsMap[r.id];
-            const logs = logsMap[r.id] || { paid: 0, discount: 0 };
+            const logs = logsMap[r.id] || { paid: 0, discount: 0, product_charges: 0 };
 
             let projected = 0;
             let prevDue = 0;
@@ -393,7 +399,8 @@ const getMonthlySummary = async (req, res) => {
 
             const paid = Number(logs.paid || 0);
             const discount = Number(logs.discount || 0);
-            const totalBill = prevDue + projected;
+            const productCharges = Number(logs.product_charges || 0);
+            const totalBill = prevDue + projected + productCharges;
             const newDue = totalBill - paid - discount;
 
             return {

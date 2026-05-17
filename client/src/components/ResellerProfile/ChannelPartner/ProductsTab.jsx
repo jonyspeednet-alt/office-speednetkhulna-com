@@ -9,8 +9,16 @@ const ProductsTab = ({
   onEditUserProducts,
   onImportCatalog,
   importingCatalog,
+  showManualProductCharge,
+  setShowManualProductCharge,
+  manualProductChargeForm,
+  setManualProductChargeForm,
+  manualProductChargeLoading,
+  handleSaveManualProductCharge,
 }) => {
   const [search, setSearch] = useState("");
+  
+  const isOverridden = manualProductChargeForm?.amount !== "" && manualProductChargeForm?.amount !== null;
 
   const userTotals = useMemo(() => {
     const map = {};
@@ -31,12 +39,26 @@ const ProductsTab = ({
     <section className="p-2 p-sm-3">
       <section className="row g-2 g-md-3 mb-3">
         <section className="col-12 col-md-4">
-          <section className="card p-3 border-0 bg-primary bg-opacity-10">
-            <small className="text-muted text-uppercase">মোট প্রোডাক্ট কাটা</small>
-            <h4 className="fw-bold text-primary m-0">
+          <section className="card p-3 border-0 bg-primary bg-opacity-10 position-relative">
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <small className="text-muted text-uppercase">মোট প্রোডাক্ট কাটা</small>
+              <button
+                className="btn btn-sm btn-link text-primary p-0 text-decoration-none shadow-none"
+                onClick={() => setShowManualProductCharge(true)}
+              >
+                <i className="fa-solid fa-pen-to-square me-1" />
+                এডিট
+              </button>
+            </div>
+            <h4 className="fw-bold text-primary m-0 d-flex align-items-center gap-2">
               {money(cpProductSummary?.total_product_deduction)}
+              {isOverridden && (
+                <span className="badge bg-warning text-dark border fw-normal" style={{ fontSize: '0.65rem' }}>
+                  ম্যানুয়াল ওভাররাইড
+                </span>
+              )}
             </h4>
-            <small className="text-muted">পার্টনার কমিশন থেকে বিয়োগ হবে</small>
+            <small className="text-muted mt-1">পার্টনার কমিশন থেকে বিয়োগ হবে</small>
           </section>
         </section>
         <section className="col-12 col-md-8">
@@ -146,6 +168,86 @@ const ProductsTab = ({
           </tbody>
         </table>
       </section>
+      {/* Manual Product Charge Modal */}
+      {showManualProductCharge && (
+        <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow">
+              <div className="modal-header bg-light border-bottom-0">
+                <h5 className="modal-title fw-bold text-dark">
+                  ম্যানুয়াল প্রোডাক্ট চার্জ
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close shadow-none"
+                  onClick={() => setShowManualProductCharge(false)}
+                />
+              </div>
+              <div className="modal-body p-4">
+                <form id="manualProductChargeForm" onSubmit={handleSaveManualProductCharge}>
+                  <div className="mb-3">
+                    <label className="form-label text-muted small fw-medium">
+                      মোট প্রোডাক্ট চার্জ (টাকা)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="form-control shadow-none"
+                      placeholder="যেমন: 2500"
+                      value={manualProductChargeForm.amount}
+                      onChange={(e) =>
+                        setManualProductChargeForm({ ...manualProductChargeForm, amount: e.target.value })
+                      }
+                    />
+                    <small className="text-muted d-block mt-1">
+                      {isOverridden ? "ফাঁকা রাখলে পুনরায় অটো-ক্যালকুলেট সিস্টেমে ফিরে যাবে।" : "কোনো অ্যামাউন্ট দিলে ইউজার প্রোডাক্টের মোট হিসাব ওভাররাইড হবে।"}
+                    </small>
+                  </div>
+                  <div className="mb-0">
+                    <label className="form-label text-muted small fw-medium">
+                      মন্তব্য (ঐচ্ছিক)
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control shadow-none"
+                      placeholder="যেমন: অতিরিক্ত ক্যাবল চার্জ..."
+                      value={manualProductChargeForm.note}
+                      onChange={(e) =>
+                        setManualProductChargeForm({ ...manualProductChargeForm, note: e.target.value })
+                      }
+                    />
+                  </div>
+                </form>
+              </div>
+              <div className="modal-footer border-top-0 bg-light">
+                <button
+                  type="button"
+                  className="btn btn-light border px-4"
+                  onClick={() => setShowManualProductCharge(false)}
+                  disabled={manualProductChargeLoading}
+                >
+                  বাতিল করুন
+                </button>
+                <button
+                  type="submit"
+                  form="manualProductChargeForm"
+                  className="btn btn-primary px-4 d-flex align-items-center gap-2"
+                  disabled={manualProductChargeLoading}
+                >
+                  {manualProductChargeLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm" />
+                      সেভ হচ্ছে...
+                    </>
+                  ) : (
+                    "সংরক্ষণ করুন"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

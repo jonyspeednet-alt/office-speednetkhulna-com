@@ -34,6 +34,7 @@ import ProductsTab from "../components/ResellerProfile/ChannelPartner/ProductsTa
 // Modal components
 import PaymentModal from "../components/ResellerProfile/Modals/PaymentModal";
 import DiscountModal from "../components/ResellerProfile/Modals/DiscountModal";
+import ProductChargeModal from "../components/ResellerProfile/Modals/ProductChargeModal";
 import EditProfileModal from "../components/ResellerProfile/Modals/EditProfileModal";
 import RateChangeModal from "../components/ResellerProfile/Modals/RateChangeModal";
 import BillHistoryModal from "../components/ResellerProfile/Modals/BillHistoryModal";
@@ -92,6 +93,15 @@ const ResellerProfile = () => {
     discountNote,
     setDiscountNote,
     submitDiscount,
+    showProductCharge,
+    setShowProductCharge,
+    productChargeAmount,
+    setProductChargeAmount,
+    productChargeDate,
+    setProductChargeDate,
+    productChargeNote,
+    setProductChargeNote,
+    submitProductCharge,
     editForm,
     setEditForm,
     saveProfile,
@@ -163,6 +173,12 @@ const ResellerProfile = () => {
     handleEditUserProducts,
     handleSaveUserProducts,
     closeUserProductsModal,
+    showManualProductCharge,
+    setShowManualProductCharge,
+    manualProductChargeForm,
+    setManualProductChargeForm,
+    manualProductChargeLoading,
+    handleSaveManualProductCharge,
   } = useChannelPartner(profileId, isChannel, load);
 
   // Auto-switch tab for channel partners
@@ -216,6 +232,7 @@ const ResellerProfile = () => {
         isChannel={isChannel}
         onPaymentClick={() => setShowPay(true)}
         onDiscountClick={() => setShowDiscount(true)}
+        onProductChargeClick={() => setShowProductCharge(true)}
         onCommissionPayClick={() => openCommissionPayment()}
       />
 
@@ -381,6 +398,7 @@ const ResellerProfile = () => {
 
               {activeTab === "cp_products" && isChannel && can.can_view_financials && (
                 <ProductsTab
+                  profileId={reseller.id}
                   cpUsers={cpUsers}
                   cpMonth={cpMonth}
                   setCpMonth={setCpMonth}
@@ -388,6 +406,12 @@ const ResellerProfile = () => {
                   onEditUserProducts={handleEditUserProducts}
                   onImportCatalog={handleImportCatalog}
                   importingCatalog={importingCatalog}
+                  showManualProductCharge={showManualProductCharge}
+                  setShowManualProductCharge={setShowManualProductCharge}
+                  manualProductChargeForm={manualProductChargeForm}
+                  setManualProductChargeForm={setManualProductChargeForm}
+                  manualProductChargeLoading={manualProductChargeLoading}
+                  handleSaveManualProductCharge={handleSaveManualProductCharge}
                 />
               )}
 
@@ -458,6 +482,19 @@ const ResellerProfile = () => {
           setDiscountNote={setDiscountNote}
           onSubmit={submitDiscount}
           onClose={() => setShowDiscount(false)}
+        />
+      )}
+
+      {showProductCharge && (
+        <ProductChargeModal
+          productChargeAmount={productChargeAmount}
+          setProductChargeAmount={setProductChargeAmount}
+          productChargeDate={productChargeDate}
+          setProductChargeDate={setProductChargeDate}
+          productChargeNote={productChargeNote}
+          setProductChargeNote={setProductChargeNote}
+          onSubmit={submitProductCharge}
+          onClose={() => setShowProductCharge(false)}
         />
       )}
 

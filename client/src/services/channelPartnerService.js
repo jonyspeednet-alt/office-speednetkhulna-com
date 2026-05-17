@@ -147,6 +147,17 @@ export const getProductSummary = async (resellerId, month) =>
     })
   ).data;
 
+export const getManualProductCharge = async (resellerId, month) =>
+  (
+    await apiClient.get(`${base}/${resellerId}/manual-product-charge`, {
+      params: { month },
+    })
+  ).data;
+
+export const saveManualProductCharge = async (resellerId, payload) =>
+  (await apiClient.post(`${base}/${resellerId}/manual-product-charge`, payload))
+    .data;
+
 export const getPartnerProductUsage = async (resellerId, month) =>
   (
     await apiClient.get(`${base}/${resellerId}/product-usage`, {

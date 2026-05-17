@@ -5,6 +5,7 @@ const { initChannelPartnerTables } = require("../utilities/channelPartnerInit");
 const {
   roundAmount: roundAmountHelper,
   sumProductDeduction,
+  getProductDeductionForMonth,
 } = require("../utilities/channelProductHelpers");
 const {
   logResellerFinancialChange,
@@ -177,7 +178,7 @@ const addUser = async (req, res) => {
       ) WHERE id = $1`,
         [resellerId],
       )
-      .catch(() => {});
+      .catch(() => { });
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -234,7 +235,7 @@ const updateUser = async (req, res) => {
       ) WHERE id = $1`,
         [resellerId],
       )
-      .catch(() => {});
+      .catch(() => { });
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -270,7 +271,7 @@ const deleteUser = async (req, res) => {
       ) WHERE id = $1`,
         [resellerId],
       )
-      .catch(() => {});
+      .catch(() => { });
 
     res.json({ message: "User deleted" });
   } catch (error) {
@@ -612,7 +613,7 @@ const getCommissionSummary = async (req, res) => {
       [resellerId, month],
     );
     const partnerAdvances = Number(advancesResult.rows[0]?.total_advances || 0);
-    const productDeduction = await sumProductDeduction(resellerId, month);
+    const productDeduction = await getProductDeductionForMonth(resellerId, month);
 
     const existingLog = await pool.query(
       `SELECT * FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2`,
@@ -659,27 +660,27 @@ const getCommissionSummary = async (req, res) => {
       net_commission: commissionLog
         ? Number(commissionLog.net_commission)
         : roundAmountHelper(
-            grossCommission - partnerAdvances - productDeduction,
-          ),
+          grossCommission - partnerAdvances - productDeduction,
+        ),
       previous_balance: previousBalance,
       total_payable: commissionLog
         ? Number(commissionLog.total_payable)
         : roundAmountHelper(
-            grossCommission -
-              partnerAdvances -
-              productDeduction +
-              previousBalance,
-          ),
+          grossCommission -
+          partnerAdvances -
+          productDeduction +
+          previousBalance,
+        ),
       paid_to_partner: totalPaidToPartner,
       closing_balance: commissionLog
         ? Number(commissionLog.closing_balance)
         : roundAmountHelper(
-            grossCommission -
-              partnerAdvances -
-              productDeduction +
-              previousBalance -
-              totalPaidToPartner,
-          ),
+          grossCommission -
+          partnerAdvances -
+          productDeduction +
+          previousBalance -
+          totalPaidToPartner,
+        ),
       commission_status: commissionLog?.status || "not_generated",
       payment_status: commissionLog?.payment_status || "pending",
     });
@@ -730,7 +731,7 @@ const generateCommissionInternal = async (resellerId, month) => {
     [resellerId, month],
   );
   const partnerAdvances = Number(advancesResult.rows[0]?.total_advances || 0);
-  const productDeduction = await sumProductDeduction(resellerId, month);
+  const productDeduction = await getProductDeductionForMonth(resellerId, month);
 
   const prevBalanceResult = await pool.query(
     `SELECT COALESCE(closing_balance, 0)::numeric AS balance
@@ -755,10 +756,10 @@ const generateCommissionInternal = async (resellerId, month) => {
   const manualDeductions = 0;
   const netCommission = roundAmount(
     grossCommission -
-      partnerAdvances -
-      productDeduction +
-      manualAdjustments -
-      manualDeductions,
+    partnerAdvances -
+    productDeduction +
+    manualAdjustments -
+    manualDeductions,
   );
   const totalPayable = roundAmount(netCommission + previousBalance);
   const closingBalance = roundAmount(totalPayable - alreadyPaid);
@@ -1239,12 +1240,12 @@ const importChannelData = async (req, res) => {
 
         const prevDueResult = prevMonth
           ? await client.query(
-              `SELECT GREATEST(0, COALESCE(amount_due, 0) - COALESCE(amount_paid, 0))::numeric AS prev_due
+            `SELECT GREATEST(0, COALESCE(amount_due, 0) - COALESCE(amount_paid, 0))::numeric AS prev_due
                FROM channel_user_payments
                WHERE reseller_id = $1 AND user_id = $2 AND month = $3
                LIMIT 1`,
-              [resellerId, userId, prevMonth],
-            )
+            [resellerId, userId, prevMonth],
+          )
           : { rows: [] };
         const previousDue = Number(prevDueResult.rows[0]?.prev_due || 0);
 
@@ -2035,6 +2036,76 @@ const downloadReconciliationReport = async (req, res) => {
   }
 };
 
+// --- Manual Product Charge Actions ---
+
+const getManualProductCharge = async (req, res) => {
+  try {
+    const resellerId = req.params.resellerId;
+    const { month } = req.query;
+    if (!month) {
+      return res.status(400).json({ error: "Month is required" });
+    }
+    const result = await pool.query(
+      `SELECT amount, note FROM channel_partner_manual_product_charges
+       WHERE reseller_id = $1 AND month = $2`,
+      [resellerId, month]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ amount: null, note: "" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error fetching manual product charge:", error);
+    res.status(500).json({ error: "Failed to fetch manual product charge" });
+  }
+};
+
+const saveManualProductCharge = async (req, res) => {
+  try {
+    const resellerId = req.params.resellerId;
+    const { month, amount, note } = req.body;
+
+    if (!month) {
+      return res.status(400).json({ error: "Month is required" });
+    }
+
+    const { isCommissionMonthLocked } = require("../utilities/channelProductHelpers");
+    const isLocked = await isCommissionMonthLocked(resellerId, month);
+    if (isLocked) {
+      return res.status(400).json({ error: "Commission month is locked." });
+    }
+
+    const parsedAmount = parseAmount(amount, null);
+
+    // If parsedAmount is null or empty, we delete the manual override
+    if (parsedAmount === null || parsedAmount === "") {
+      await pool.query(
+        `DELETE FROM channel_partner_manual_product_charges
+         WHERE reseller_id = $1 AND month = $2`,
+        [resellerId, month]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO channel_partner_manual_product_charges (reseller_id, month, amount, note, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (reseller_id, month) DO UPDATE SET
+           amount = EXCLUDED.amount,
+           note = EXCLUDED.note,
+           updated_at = NOW()`,
+        [resellerId, month, parsedAmount, String(note || "").trim(), getActor(req)]
+      );
+    }
+
+    // Auto regenerate commission
+    await generateCommissionInternal(resellerId, month);
+
+    res.json({ success: true, message: "Manual product charge saved successfully" });
+  } catch (error) {
+    console.error("Error saving manual product charge:", error);
+    res.status(500).json({ error: "Failed to save manual product charge" });
+  }
+};
+
 module.exports = {
   listUsers,
   addUser,
@@ -2061,4 +2132,7 @@ module.exports = {
   getReconciliations,
   getReconciliationDetails,
   downloadReconciliationReport,
+  downloadReconciliationReport,
+  getManualProductCharge,
+  saveManualProductCharge,
 };

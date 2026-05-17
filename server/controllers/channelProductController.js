@@ -5,6 +5,7 @@ const {
   roundAmount,
   monthToServiceDate,
   sumProductDeduction,
+  getProductDeductionForMonth,
   isCommissionMonthLocked,
 } = require("../utilities/channelProductHelpers");
 
@@ -356,7 +357,7 @@ const saveUserProducts = async (req, res) => {
 
     await client.query("COMMIT");
 
-    const total = await sumProductDeduction(resellerId, month);
+    const total = await getProductDeductionForMonth(resellerId, month);
     res.json({ success: true, product_deduction_month: total });
   } catch (error) {
     try {
@@ -448,7 +449,7 @@ const getProductSummary = async (req, res) => {
          ORDER BY total_amount DESC`,
         [resellerId, serviceMonth],
       ),
-      sumProductDeduction(resellerId, month),
+      getProductDeductionForMonth(resellerId, month),
     ]);
 
     res.json({

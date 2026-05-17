@@ -59,10 +59,28 @@ const recalcCommissionNet = (row) => {
   return { net_commission: net, total_payable: totalPayable, closing_balance: closing };
 };
 
+const getProductDeductionForMonth = async (resellerId, monthYm) => {
+  const month = String(monthYm || "").trim();
+  if (!month) return 0;
+
+  const manualResult = await pool.query(
+    `SELECT amount FROM channel_partner_manual_product_charges
+     WHERE reseller_id = $1 AND month = $2`,
+    [resellerId, month]
+  );
+  
+  if (manualResult.rows.length > 0) {
+    return roundAmount(manualResult.rows[0].amount);
+  }
+  
+  return sumProductDeduction(resellerId, month);
+};
+
 module.exports = {
   roundAmount,
   monthToServiceDate,
   sumProductDeduction,
   isCommissionMonthLocked,
   recalcCommissionNet,
+  getProductDeductionForMonth,
 };

@@ -25,6 +25,8 @@ import {
   getProductSummary,
   getUserProducts,
   saveUserProducts,
+  getManualProductCharge,
+  saveManualProductCharge,
 } from "../services/channelPartnerService";
 import { getDhakaDateYmd } from "../utils/formatters";
 
@@ -52,6 +54,7 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
   const [showCommissionPay, setShowCommissionPay] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showManualProductCharge, setShowManualProductCharge] = useState(false);
 
   // Form states
   const [newUser, setNewUser] = useState({
@@ -73,6 +76,11 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     amount: "",
     note: "",
   });
+  const [manualProductChargeForm, setManualProductChargeForm] = useState({
+    amount: "",
+    note: "",
+  });
+  const [manualProductChargeLoading, setManualProductChargeLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importMonth, setImportMonth] = useState(getDhakaDateYmd().slice(0, 7));
@@ -81,7 +89,7 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     if (!profileId || !isChannel) return;
     setCpLoading(true);
     try {
-      const [users, commission, history, statement, payments, productSummary] =
+      const [users, commission, history, statement, payments, productSummary, manualCharge] =
         await Promise.all([
           getChannelUsers(profileId).catch(() => []),
           getCommissionSummary(profileId, cpMonth).catch(() => null),
@@ -89,6 +97,7 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
           getChannelStatement(profileId).catch(() => []),
           getCommissionPayments(profileId).catch(() => []),
           getProductSummary(profileId, cpMonth).catch(() => null),
+          getManualProductCharge(profileId, cpMonth).catch(() => null),
         ]);
       setCpUsers(users);
       setCpCommission(commission);
@@ -96,6 +105,10 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
       setCpStatement(statement);
       setCpPayments(payments);
       setCpProductSummary(productSummary);
+      setManualProductChargeForm({
+        amount: manualCharge?.amount ?? "",
+        note: manualCharge?.note || "",
+      });
     } catch (e) {
       toast.error(e?.response?.data?.message || "Channel partner data load failed");
     }
@@ -419,6 +432,26 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     }
   };
 
+  const handleSaveManualProductCharge = async (e) => {
+    e.preventDefault();
+    setManualProductChargeLoading(true);
+    try {
+      await saveManualProductCharge(profileId, {
+        month: cpMonth,
+        amount: manualProductChargeForm.amount,
+        note: manualProductChargeForm.note,
+      });
+      toast.success("Manual product charge saved successfully!");
+      setShowManualProductCharge(false);
+      await loadChannelData();
+      await refreshProfile();
+    } catch (error) {
+      toast.error(error?.response?.data?.error || "Failed to save manual product charge");
+    } finally {
+      setManualProductChargeLoading(false);
+    }
+  };
+
   return {
     cpUsers,
     cpMonth,
@@ -482,5 +515,11 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     handleEditUserProducts,
     handleSaveUserProducts,
     closeUserProductsModal,
+    showManualProductCharge,
+    setShowManualProductCharge,
+    manualProductChargeForm,
+    setManualProductChargeForm,
+    manualProductChargeLoading,
+    handleSaveManualProductCharge,
   };
 };

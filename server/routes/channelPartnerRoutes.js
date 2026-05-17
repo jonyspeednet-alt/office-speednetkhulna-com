@@ -56,6 +56,16 @@ router.get(
   productController.getPartnerProductUsage,
 );
 router.get(
+  "/:resellerId/manual-product-charge",
+  canFinancials,
+  controller.getManualProductCharge,
+);
+router.post(
+  "/:resellerId/manual-product-charge",
+  canFinancials,
+  controller.saveManualProductCharge,
+);
+router.get(
   "/:resellerId/users/:userId/products",
   canView,
   productController.getUserProducts,

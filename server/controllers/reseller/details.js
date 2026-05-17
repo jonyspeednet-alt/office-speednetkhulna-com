@@ -111,6 +111,16 @@ const getResellerProfileDetails = async (req, res) => {
         [id, currentMonth],
       );
       const totalDiscountCurrentMonth = Number(discountCurrentMonthResult.rows[0]?.total || 0);
+
+      const productCurrentMonthResult = await pool.query(
+        `SELECT COALESCE(SUM(transaction_amount),0)::numeric AS total
+         FROM billing_logs
+         WHERE reseller_id = $1
+           AND TO_CHAR(COALESCE(effective_date, created_at), 'YYYY-MM') = $2
+           AND COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('product', 'product_charge', 'charge')`,
+        [id, currentMonth],
+      );
+      const totalProductCurrentMonth = Number(productCurrentMonthResult.rows[0]?.total || 0);
   
       const currentBillResult = await pool.query(
         `SELECT id, bill_month, created_at, COALESCE(amount,0)::numeric AS amount, COALESCE(adjustment,0)::numeric AS adjustment, COALESCE(previous_due,0)::numeric AS previous_due
@@ -122,6 +132,7 @@ const getResellerProfileDetails = async (req, res) => {
       const currentBill = currentBillResult.rows[0] || null;
   
       let paymentsAfterLastBill = 0;
+      let productChargesAfterLastBill = 0;
       let netDue = 0;
       let calcTooltip = "";
       let projectedBillCurrentMonth = Number(reseller.current_projected_bill || 0);
@@ -131,12 +142,15 @@ const getResellerProfileDetails = async (req, res) => {
         projectedBillCurrentMonth = Number(currentBill.amount || 0) + Number(currentBill.adjustment || 0);
         previousDueCurrentMonth = Number(currentBill.previous_due || 0);
         const afterBillResult = await pool.query(
-            `SELECT COALESCE(SUM(transaction_amount),0)::numeric AS total
+            `SELECT 
+                COALESCE(SUM(CASE WHEN COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('payment','discount') THEN transaction_amount ELSE 0 END), 0)::numeric AS paid,
+                COALESCE(SUM(CASE WHEN COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('product','product_charge','charge') THEN transaction_amount ELSE 0 END), 0)::numeric AS product_charges
              FROM billing_logs
-             WHERE reseller_id = $1 AND effective_date > $2 AND COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('payment','discount')`,
+             WHERE reseller_id = $1 AND effective_date > $2`,
             [id, currentBill.created_at],
           );
-        paymentsAfterLastBill = Number(afterBillResult.rows[0]?.total || 0);
+        paymentsAfterLastBill = Number(afterBillResult.rows[0]?.paid || 0);
+        productChargesAfterLastBill = Number(afterBillResult.rows[0]?.product_charges || 0);
       } else {
         try {
           const breakdown = await calculateMonthlyBillBreakdown(id, currentMonth, reseller);
@@ -155,8 +169,12 @@ const getResellerProfileDetails = async (req, res) => {
       projectedBillCurrentMonth = Math.round(projectedBillCurrentMonth * 100) / 100;
       previousDueCurrentMonth = Math.round(previousDueCurrentMonth * 100) / 100;
   
-      netDue = previousDueCurrentMonth + projectedBillCurrentMonth - totalPaidCurrentMonth - totalDiscountCurrentMonth;
-      calcTooltip = "Formula: (Previous Due + Projected Bill) - Paid This Month - Discount This Month";
+      if (currentBill) {
+        netDue = previousDueCurrentMonth + projectedBillCurrentMonth + productChargesAfterLastBill - paymentsAfterLastBill;
+      } else {
+        netDue = previousDueCurrentMonth + projectedBillCurrentMonth + totalProductCurrentMonth - totalPaidCurrentMonth - totalDiscountCurrentMonth;
+      }
+      calcTooltip = "Formula: (Previous Due + Projected Bill + Product Charges) - Paid This Month - Discount This Month";
   
       const lastBillResult = await pool.query(`SELECT id, bill_month FROM monthly_bills WHERE reseller_id = $1 ORDER BY bill_month DESC LIMIT 1`, [id]);
       const lastBill = lastBillResult.rows[0] || null;
@@ -187,7 +205,7 @@ const getResellerProfileDetails = async (req, res) => {
          UNION ALL
          SELECT COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END)::text AS type, id, COALESCE(transaction_amount,0)::numeric AS amount, effective_date AS date, COALESCE(change_desc, CASE WHEN COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) = 'discount' THEN 'Discount' ELSE 'Payment Received' END) AS description
          FROM billing_logs
-         WHERE reseller_id = $1 AND COALESCE(transaction_amount,0) > 0 AND COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('payment','discount')
+         WHERE reseller_id = $1 AND COALESCE(transaction_amount,0) > 0 AND COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('payment','discount','product','product_charge','charge')
          ORDER BY date DESC
          LIMIT 20`,
         [id],
@@ -208,16 +226,19 @@ const getResellerProfileDetails = async (req, res) => {
       for (const bill of recentBillsResult.rows) {
         const ym = String(bill.bill_month).slice(0, 7);
         const paidResult = await pool.query(
-            `SELECT COALESCE(SUM(transaction_amount),0)::numeric AS paid
+            `SELECT 
+                COALESCE(SUM(CASE WHEN COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('payment','discount') THEN transaction_amount ELSE 0 END), 0)::numeric AS paid,
+                COALESCE(SUM(CASE WHEN COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('product','product_charge','charge') THEN transaction_amount ELSE 0 END), 0)::numeric AS product_charges
              FROM billing_logs
-             WHERE reseller_id = $1 AND TO_CHAR(COALESCE(effective_date, created_at), 'YYYY-MM') = $2 AND COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END) IN ('payment','discount')`,
+             WHERE reseller_id = $1 AND TO_CHAR(COALESCE(effective_date, created_at), 'YYYY-MM') = $2`,
             [id, ym],
           );
         const paid = Number(paidResult.rows[0]?.paid || 0);
+        const productCharges = Number(paidResult.rows[0]?.product_charges || 0);
         const prevDue = Number(bill.previous_due || 0);
         const amount = Number(bill.final_amount || 0);
         const adj = Number(bill.adjustment || 0);
-        const closingDue = prevDue + amount + adj - paid;
+        const closingDue = prevDue + amount + adj + productCharges - paid;
         billHistory.push({ ...bill, paid, closing_due: closingDue });
       }
   

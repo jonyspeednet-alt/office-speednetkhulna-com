@@ -338,6 +338,23 @@ const initChannelPartnerTables = async () => {
       "CREATE INDEX IF NOT EXISTS idx_cupu_user_month ON channel_user_product_usage (user_id, service_month)",
     );
 
+    await runQuery(`
+      CREATE TABLE IF NOT EXISTS channel_partner_manual_product_charges (
+        id SERIAL PRIMARY KEY,
+        reseller_id INT NOT NULL,
+        month VARCHAR(7) NOT NULL,
+        amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        note TEXT DEFAULT '',
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(reseller_id, month)
+      )
+    `);
+    await runQuery(
+      "CREATE INDEX IF NOT EXISTS idx_cpmc_reseller_month ON channel_partner_manual_product_charges (reseller_id, month)",
+    );
+
     await runQuery(
       `ALTER TABLE channel_commission_logs ADD COLUMN IF NOT EXISTS product_deduction NUMERIC(12,2) DEFAULT 0`,
     );
