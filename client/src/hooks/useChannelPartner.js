@@ -287,10 +287,10 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     }
   };
 
-  const handleImport = async () => {
+  const handleImport = async (customFile = null) => {
     setImporting(true);
     try {
-      const res = await importChannelData(profileId, importMonth, importFile);
+      const res = await importChannelData(profileId, importMonth, customFile || importFile);
       window.alert(
         `✅ ইম্পোর্ট সফল!\nমোট রেকর্ড: ${res.total}\nনতুন ইউজার: ${res.created}\nআপডেট করা হয়েছে: ${res.updated}\nস্কিপ: ${res.skipped || 0}\nমোট কালেকশন: ${res.total_received || 0}\nমোট বাকি: ${res.total_not_paid || 0}`,
       );
