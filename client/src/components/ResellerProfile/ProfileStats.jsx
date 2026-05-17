@@ -86,6 +86,7 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
                         valueClass={closing > 0 ? 'text-danger' : 'text-success'}
                         icon={closing > 0 ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle'}
                     />
+                </div>
             </div>
         );
     }
