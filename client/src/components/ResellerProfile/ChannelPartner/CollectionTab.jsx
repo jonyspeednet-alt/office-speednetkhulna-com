@@ -13,7 +13,7 @@ const CollectionTab = ({
   const getPending = (p) =>
     Number(p.deferred_amount ?? Math.max(0, Number(p.amount_due || 0) - Number(p.amount_paid || 0)));
   const totalCollection = cpUserPayments.reduce(
-    (s, p) => s + Number(p.realized_amount ?? p.amount_paid || 0),
+    (s, p) => s + Number(p.realized_amount ?? (p.amount_paid || 0)),
     0,
   );
   const totalDue = cpUserPayments.reduce(
