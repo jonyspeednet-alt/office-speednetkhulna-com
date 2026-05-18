@@ -42,8 +42,8 @@ const CommissionBreakdown = ({ summary }) => {
 
   const rows = [
     { label: "আদায়কৃত বিল (Realized)",   value: realized,     sign: "neutral", bold: false },
-    deferred > 0 && { label: `(-) বকেয়া বিল (${nonPaying} জন বাকি${partialPaying > 0 ? `, ${partialPaying} আংশিক` : ''})`, value: deferred, sign: "minus", bold: false },
     { label: `× ${profitPct}% কমিশন = Gross`, value: gross,    sign: "neutral", bold: false },
+    deferred > 0 && { label: `(-) বকেয়া বিল (${nonPaying} জন বাকি${partialPaying > 0 ? `, ${partialPaying} আংশিক` : ''})`, value: deferred, sign: "minus", bold: false },
     productDed > 0 && { label: "(-) প্রোডাক্ট কর্তন",   value: productDed,  sign: "minus", bold: false },
     advances > 0 && { label: "(-) পার্টনার অ্যাডভান্স", value: advances,    sign: "minus", bold: false },
     adjustments !== 0 && { label: "(+) সমন্বয় (Adjustment)", value: adjustments, sign: "plus",  bold: false },

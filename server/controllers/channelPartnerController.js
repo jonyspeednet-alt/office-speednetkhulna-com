@@ -681,32 +681,24 @@ const getCommissionSummary = async (req, res) => {
       deductions: Number(commissionLog?.deductions || 0),
       adjustment_note: commissionLog?.adjustment_note || "",
       deduction_note: commissionLog?.deduction_note || "",
-      net_commission: commissionLog
-        ? Number(commissionLog.net_commission)
-        : roundAmountHelper(
-          grossCommission - partnerAdvances - productDeduction - totalDeferred,
-        ),
+      // Always calculate net_commission from live data so deferred is always subtracted
+      // while preserving manual adjustments/deductions from the commission log
+      net_commission: roundAmountHelper(
+        grossCommission - partnerAdvances - productDeduction - totalDeferred
+        + Number(commissionLog?.adjustments || 0) - Number(commissionLog?.deductions || 0),
+      ),
       previous_balance: previousBalance,
-      total_payable: commissionLog
-        ? Number(commissionLog.total_payable)
-        : roundAmountHelper(
-          grossCommission -
-          partnerAdvances -
-          productDeduction -
-          totalDeferred +
-          previousBalance,
-        ),
+      total_payable: roundAmountHelper(
+        grossCommission - partnerAdvances - productDeduction - totalDeferred
+        + Number(commissionLog?.adjustments || 0) - Number(commissionLog?.deductions || 0)
+        + previousBalance,
+      ),
       paid_to_partner: totalPaidToPartner,
-      closing_balance: commissionLog
-        ? Number(commissionLog.closing_balance)
-        : roundAmountHelper(
-          grossCommission -
-          partnerAdvances -
-          productDeduction -
-          totalDeferred +
-          previousBalance -
-          totalPaidToPartner,
-        ),
+      closing_balance: roundAmountHelper(
+        grossCommission - partnerAdvances - productDeduction - totalDeferred
+        + Number(commissionLog?.adjustments || 0) - Number(commissionLog?.deductions || 0)
+        + previousBalance - totalPaidToPartner,
+      ),
       commission_status: commissionLog?.status || "not_generated",
       payment_status: commissionLog?.payment_status || "pending",
     });
