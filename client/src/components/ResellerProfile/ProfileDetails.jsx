@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { fmtDate, money, partnerTypeLabel } from '../../utils/formatters';
 
 const DetailRow = ({ label, children }) => (
@@ -8,21 +8,57 @@ const DetailRow = ({ label, children }) => (
     </div>
 );
 
+/* Collapsible section wrapper */
+const CollapsibleSection = ({ title, icon, defaultOpen = false, extraHeader, children }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="card p-2 p-sm-3 mb-3 rp-collapsible">
+            <div
+                className="d-flex justify-content-between align-items-center rp-collapsible-header"
+                onClick={() => setOpen(!open)}
+                role="button"
+                tabIndex={0}
+                aria-expanded={open}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpen(!open); }}
+            >
+                <h6 className="fw-bold text-muted text-uppercase small m-0 d-flex align-items-center gap-2">
+                    {icon && <i className={`${icon} text-primary`} />}
+                    {title}
+                    <i className={`fas fa-chevron-down rp-collapse-icon ${open ? 'rp-collapse-open' : ''}`} />
+                </h6>
+                {extraHeader}
+            </div>
+            <div className={`rp-collapsible-body ${open ? 'rp-collapse-show' : ''}`}>
+                {children}
+            </div>
+        </div>
+    );
+};
+
 const ProfileDetails = ({ reseller, can, onEditClick }) => {
     const realIpMonthly = Number(reseller.real_ip_count || 0) * Number(reseller.real_ip_price || 0);
     const isChannel = reseller.partner_type === 'channel_partner';
 
     return (
         <>
-            <div className="card p-2 p-sm-3 mb-3">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                    <h6 className="fw-bold text-muted text-uppercase small m-0">প্রোফাইল বিস্তারিত</h6>
-                    {can.can_edit_profile && (
-                        <button type="button" className="btn btn-sm btn-light text-primary rounded-circle" onClick={onEditClick} title="প্রোফাইল সম্পাদনা" aria-label="প্রোফাইল সম্পাদনা">
+            <CollapsibleSection
+                title="প্রোফাইল বিস্তারিত"
+                icon="fas fa-id-card"
+                defaultOpen={true}
+                extraHeader={
+                    can.can_edit_profile ? (
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-light text-primary rounded-circle"
+                            onClick={(e) => { e.stopPropagation(); onEditClick(); }}
+                            title="প্রোফাইল সম্পাদনা"
+                            aria-label="প্রোফাইল সম্পাদনা"
+                        >
                             <i className="fas fa-edit" />
                         </button>
-                    )}
-                </div>
+                    ) : undefined
+                }
+            >
                 <div className={`rp-details-grid ${isChannel ? '' : 'rp-details-2col'}`}>
                     <DetailRow label="কোম্পানি">{reseller.company_name || '-'}</DetailRow>
                     <DetailRow label="ফোন">{reseller.phone || '-'}</DetailRow>
@@ -86,15 +122,19 @@ const ProfileDetails = ({ reseller, can, onEditClick }) => {
                         </span>
                     </DetailRow>
                 </div>
-            </div>
-            <div className="card p-2 p-sm-3 mb-3">
-                <h6 className="fw-bold text-muted text-uppercase small m-0 mb-2">Real IP</h6>
+            </CollapsibleSection>
+
+            <CollapsibleSection
+                title="Real IP প্রোফাইল বিস্তারিত"
+                icon="fas fa-network-wired"
+                defaultOpen={false}
+            >
                 <div className="rp-details-grid rp-details-2col">
                     <DetailRow label="Quantity">{Number(reseller.real_ip_count || 0).toLocaleString('bn-BD')}</DetailRow>
                     <DetailRow label="Unit Price">{can.can_view_financials ? money(reseller.real_ip_price) : '-'}</DetailRow>
                     <DetailRow label="Monthly Total">{can.can_view_financials ? money(realIpMonthly) : '-'}</DetailRow>
                 </div>
-            </div>
+            </CollapsibleSection>
         </>
     );
 };

@@ -231,6 +231,60 @@
   border-bottom: 0;
 }
 
+/* Collapsible sections */
+.reseller-page .rp-collapsible .rp-collapsible-header {
+  cursor: pointer;
+  user-select: none;
+  padding: 0;
+  transition: opacity 0.15s ease;
+}
+
+.reseller-page .rp-collapsible .rp-collapsible-header:hover {
+  opacity: 0.8;
+}
+
+.reseller-page .rp-collapsible .rp-collapse-icon {
+  font-size: 0.6rem;
+  transition: transform 0.25s ease;
+  color: var(--rp-muted);
+}
+
+.reseller-page .rp-collapsible .rp-collapse-icon.rp-collapse-open {
+  transform: rotate(180deg);
+}
+
+.reseller-page .rp-collapsible .rp-collapsible-body {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.25s ease, margin 0.25s ease;
+  margin-top: 0;
+}
+
+.reseller-page .rp-collapsible .rp-collapsible-body.rp-collapse-show {
+  max-height: 800px;
+  opacity: 1;
+  margin-top: 0.5rem;
+  overflow: visible;
+}
+
+/* Fix: prevent horizontal scroll on details grid */
+.reseller-page .rp-details-grid {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.reseller-page .rp-details-grid .rp-detail-row {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.reseller-page .rp-details-grid .rp-detail-row span {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 .reseller-page .rp-loading-page {
   display: flex;
   flex-direction: column;
