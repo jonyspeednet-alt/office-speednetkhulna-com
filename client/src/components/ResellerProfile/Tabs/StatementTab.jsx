@@ -15,7 +15,8 @@ const StatementTab = ({ statementItems }) => {
     })), [statementItems]);
 
     return (
-        <div className="table-responsive" style={{ maxHeight: 420 }}>
+        <div className="p-2 p-sm-3">
+            <div className="table-responsive" style={{ maxHeight: 420 }}>
             <table className="table table-hover align-middle mb-0">
                 <thead className="table-light">
                     <tr>
@@ -66,6 +67,7 @@ const StatementTab = ({ statementItems }) => {
                     ))}
                 </tbody>
             </table>
+            </div>
         </div>
     );
 };

@@ -84,6 +84,7 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importMonth, setImportMonth] = useState(getDhakaDateYmd().slice(0, 7));
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const loadChannelData = useCallback(async () => {
     if (!profileId || !isChannel) return;
@@ -178,17 +179,20 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (window.confirm("এই ইউজার মুছে ফেলতে চান?")) {
-      try {
-        await deleteChannelUser(profileId, userId);
-        await loadChannelData();
-        await refreshProfile();
-        toast.success("ইউজার মুছে ফেলা হয়েছে");
-      } catch (err) {
-        toast.error(err?.response?.data?.message || "ইউজার মুছতে সমস্যা হয়েছে");
+  const handleDeleteUser = (userId) => {
+    setConfirmAction({
+      message: 'এই ইউজার মুছে ফেলতে চান?',
+      onConfirm: async () => {
+        try {
+          await deleteChannelUser(profileId, userId);
+          await loadChannelData();
+          await refreshProfile();
+          toast.success('ইউজার মুছে ফেলা হয়েছে');
+        } catch (err) {
+          toast.error(err?.response?.data?.message || 'ইউজার মুছতে সমস্যা হয়েছে');
+        }
       }
-    }
+    });
   };
 
   const handleInitPayments = async () => {
@@ -207,26 +211,25 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     loadChannelData();
   };
 
-  const handleBulkFullPaid = async () => {
+  const handleBulkFullPaid = () => {
     const unpaid = cpUserPayments.filter((p) => Number(p.amount_paid) === 0);
     if (unpaid.length === 0) return;
-    if (
-      !window.confirm(
-        `${unpaid.length} জন unpaid ইউজারকে full paid হিসেবে মার্ক করতে চান?`,
-      )
-    )
-      return;
-    await bulkRecordPayments(
-      profileId,
-      cpMonth,
-      unpaid.map((p) => ({
-        user_id: p.user_id,
-        amount_paid: Number(p.amount_due || p.monthly_rate || 0),
-        payment_date: getDhakaDateYmd(),
-      })),
-    );
-    loadUserPayments();
-    loadChannelData();
+    setConfirmAction({
+      message: `${unpaid.length} জন unpaid ইউজারকে full paid হিসেবে মার্ক করতে চান?`,
+      onConfirm: async () => {
+        await bulkRecordPayments(
+          profileId,
+          cpMonth,
+          unpaid.map((p) => ({
+            user_id: p.user_id,
+            amount_paid: Number(p.amount_due || p.monthly_rate || 0),
+            payment_date: getDhakaDateYmd(),
+          })),
+        );
+        loadUserPayments();
+        loadChannelData();
+      }
+    });
   };
 
   const handleGenerateCommission = async () => {
@@ -280,26 +283,29 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     loadChannelData();
   };
 
-  const handleFinalize = async (logId) => {
-    if (window.confirm("কমিশন Finalize করতে চান?")) {
-      await finalizeCommission(profileId, logId);
-      loadChannelData();
-    }
+  const handleFinalize = (logId) => {
+    setConfirmAction({
+      message: 'কমিশন Finalize করতে চান?',
+      onConfirm: async () => {
+        await finalizeCommission(profileId, logId);
+        loadChannelData();
+      }
+    });
   };
 
   const handleImport = async (customFile = null) => {
     setImporting(true);
     try {
       const res = await importChannelData(profileId, importMonth, customFile || importFile);
-      window.alert(
-        `✅ ইম্পোর্ট সফল!\nমোট রেকর্ড: ${res.total}\nনতুন ইউজার: ${res.created}\nআপডেট করা হয়েছে: ${res.updated}\nস্কিপ: ${res.skipped || 0}\nমোট কালেকশন: ${res.total_received || 0}\nমোট বাকি: ${res.total_not_paid || 0}`,
+      toast.success(
+        `ইম্পোর্ট সফল! মোট রেকর্ড: ${res.total}, নতুন: ${res.created}, আপডেট: ${res.updated}, স্কিপ: ${res.skipped || 0}`,
       );
       setShowImport(false);
       setImportFile(null);
       loadChannelData();
       loadUserPayments();
     } catch (err) {
-      window.alert(
+      toast.error(
         err?.response?.data?.message || "ইম্পোর্ট করতে সমস্যা হয়েছে।",
       );
     } finally {
@@ -413,7 +419,7 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
       );
 
       if (!matched) {
-        window.alert(
+        toast.error(
           "এই মাসের নিষ্পত্তি রিপোর্ট পাওয়া যায়নি। আগে Reconciliation initiate/approve করুন।",
         );
         return;
@@ -421,7 +427,7 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
 
       await downloadReconciliationReport(profileId, matched.id);
     } catch (err) {
-      window.alert("রিপোর্ট ডাউনলোড করতে সমস্যা হয়েছে।");
+      toast.error("রিপোর্ট ডাউনলোড করতে সমস্যা হয়েছে।");
     }
   };
 
@@ -443,6 +449,13 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     } finally {
       setManualProductChargeLoading(false);
     }
+  };
+
+  const executeConfirm = async () => {
+    if (confirmAction?.onConfirm) {
+      await confirmAction.onConfirm();
+    }
+    setConfirmAction(null);
   };
 
   return {
@@ -514,5 +527,8 @@ export const useChannelPartner = (profileId, isChannel, onProfileRefresh) => {
     setManualProductChargeForm,
     manualProductChargeLoading,
     handleSaveManualProductCharge,
+    confirmAction,
+    setConfirmAction,
+    executeConfirm,
   };
 };

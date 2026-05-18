@@ -57,7 +57,7 @@ const BandwidthTab = ({ reseller, can, rateChangeLogs, onRateChangeClick }) => {
     }, [reseller]);
 
     return (
-        <div className="p-3">
+        <div className="p-2 p-sm-3">
             <div className="card card-body border-0 shadow-sm mb-3 bg-light">
                 <h6 className="fw-bold small text-muted text-uppercase mb-3">Allocation Overview</h6>
                 <div className="row">
@@ -106,7 +106,7 @@ const BandwidthTab = ({ reseller, can, rateChangeLogs, onRateChangeClick }) => {
             </div>
 
             <div className="d-flex flex-column mb-3">
-                {activePackages.length === 0 ? <div className="text-muted small">No active package</div> : activePackages.map((item) => (
+                {activePackages.length === 0 ? <div className="text-muted small"><i className="fas fa-box-open d-block mb-1" />No active package</div> : activePackages.map((item) => (
                     <div key={item.label} className="d-flex justify-content-between align-items-center border-bottom py-2">
                         <div className="d-flex align-items-center">
                             <i className={`fas ${item.icon} ${item.color} me-3`} style={{ width: 20 }} />

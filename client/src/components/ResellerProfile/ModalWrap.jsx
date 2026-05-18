@@ -1,7 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const ModalWrap = ({ title, children, onClose, size = "md" }) => {
     const maxWidth = size === "lg" ? "800px" : size === "sm" ? "400px" : "550px";
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (e.key === 'Escape') onClose?.();
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [onClose]);
     return (
         <div
             className="position-fixed top-0 start-0 w-100 h-100 d-flex rp-modal-backdrop"

@@ -184,6 +184,7 @@ const CommissionTab = ({
             {cpHistory.length === 0 ? (
               <tr>
                 <td colSpan="14" className="text-center text-muted py-4">
+                  <i className="fas fa-inbox d-block mb-1" />
                   কোনো কমিশন ইতিহাস নেই
                 </td>
               </tr>
@@ -329,6 +330,53 @@ const CommissionTab = ({
             )}
           </tbody>
         </table>
+      </div>
+      <div className="d-md-none rp-mobile-list">
+        {cpHistory.length === 0 ? (
+          <div className="text-center text-muted py-4">
+            <i className="fas fa-inbox d-block mb-2" style={{ fontSize: '1.5rem' }} />
+            কোনো কমিশন ইতিহাস নেই
+          </div>
+        ) : (
+          cpHistory.map((h) => {
+            const bal = Number(h.closing_balance || 0);
+            const balIsPos = bal >= 0;
+            return (
+              <div key={h.id} className="rp-mobile-card">
+                <div className="rp-mobile-card-head">
+                  <div>
+                    <span className="fw-bold text-primary">{h.month}</span>
+                    <span className={`badge rounded-pill ms-2 ${h.status === 'finalized' ? 'bg-success-subtle text-success-emphasis border border-success-subtle' : 'bg-warning-subtle text-warning-emphasis border border-warning-subtle'}`} style={{ fontSize: '0.65rem' }}>
+                      {h.status === 'finalized' ? 'Finalized' : 'Draft'}
+                    </span>
+                  </div>
+                  <div className="btn-group shadow-sm rounded-pill overflow-hidden" style={{ fontSize: '0.75rem' }}>
+                    {h.status === 'draft' && (
+                      <>
+                        <button className="btn btn-white btn-sm border py-0" onClick={() => onAdjustment(h)} title="সমন্বয়"><i className="fas fa-sliders-h text-info" /></button>
+                        <button className="btn btn-white btn-sm border py-0" onClick={() => onFinalize(h.id)} title="Finalize"><i className="fas fa-check text-success" /></button>
+                      </>
+                    )}
+                    {h.status === 'finalized' && (
+                      <>
+                        {bal > 0 && <button className="btn btn-white btn-sm border py-0" onClick={() => onCommissionPayment(h)} title="পেমেন্ট"><i className="fas fa-money-bill text-success" /></button>}
+                        <button className="btn btn-white btn-sm border py-0" onClick={() => onDownloadReport(h)} title="Report"><i className="fas fa-file-pdf text-danger" /></button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="rp-kv">
+                  <div><span className="label">কালেকশন</span><div className="fw-bold">{money(h.total_collection)}</div></div>
+                  <div><span className="label">Gross</span><div>{money(h.gross_commission)}</div></div>
+                  <div><span className="label">বকেয়া</span><div className={Number(h.deferred_amount || 0) > 0 ? 'text-danger fw-bold' : 'text-muted'}>{Number(h.deferred_amount || 0) > 0 ? `- ${money(h.deferred_amount)}` : '-'}</div></div>
+                  <div><span className="label">Net</span><div className="fw-bold text-dark">{money(h.net_commission)}</div></div>
+                  <div><span className="label">Paid</span><div className="text-success fw-bold">{money(h.paid_amount)}</div></div>
+                  <div><span className="label">Balance</span><div><BalanceBadge value={bal} /></div></div>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

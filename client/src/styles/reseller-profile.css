@@ -291,3 +291,29 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+.reseller-page .rp-gradient-purple {
+  background: linear-gradient(135deg, #4318ff 0%, #7c58ff 100%);
+  color: #fff;
+}
+.reseller-page .rp-gradient-green {
+  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+  color: #fff;
+}
+.reseller-page .rp-gradient-amber {
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  color: #fff;
+}
+.reseller-page .rp-gradient-dark {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  color: #fff;
+}
+.reseller-page .rp-gradient-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+}

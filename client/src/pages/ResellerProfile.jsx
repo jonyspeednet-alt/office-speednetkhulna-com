@@ -43,6 +43,7 @@ import CommissionPaymentModal from "../components/ResellerProfile/Modals/Commiss
 import AdjustmentModal from "../components/ResellerProfile/Modals/AdjustmentModal";
 import ImportModal from "../components/ResellerProfile/Modals/ImportModal";
 import UserProductsModal from "../components/ResellerProfile/Modals/UserProductsModal";
+import ConfirmDialog from "../components/ResellerProfile/ConfirmDialog";
 
 ChartJS.register(
   CategoryScale,
@@ -55,10 +56,11 @@ ChartJS.register(
 
 const ResellerProfile = () => {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const profileId = id || searchParams.get("id");
 
-  const [activeTab, setActiveTab] = useState("bandwidth");
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'bandwidth');
+  const switchTab = (tab) => { setActiveTab(tab); setSearchParams({ tab }, { replace: true }); };
 
   // Use custom hooks
   const {
@@ -178,6 +180,9 @@ const ResellerProfile = () => {
     setManualProductChargeForm,
     manualProductChargeLoading,
     handleSaveManualProductCharge,
+    confirmAction,
+    setConfirmAction,
+    executeConfirm,
   } = useChannelPartner(profileId, isChannel, load);
 
   // Auto-switch tab for channel partners
@@ -187,7 +192,7 @@ const ResellerProfile = () => {
       data.reseller?.partner_type === "channel_partner" &&
       activeTab === "bandwidth"
     ) {
-      setActiveTab("cp_users");
+      switchTab("cp_users");
     }
   }, [data, activeTab]);
 
@@ -216,6 +221,12 @@ const ResellerProfile = () => {
 
   return (
     <div className="container-fluid py-3 reseller-page">
+      <nav aria-label="breadcrumb" className="mb-3">
+        <ol className="breadcrumb mb-0 small">
+          <li className="breadcrumb-item"><Link to="/reseller-list" className="text-decoration-none">Resellers</Link></li>
+          <li className="breadcrumb-item active" aria-current="page">{reseller.name || reseller.reseller_name}</li>
+        </ol>
+      </nav>
       {!isChannel && stats.pending_bill_warning && (
         <div className="alert alert-warning border-0 shadow-sm mb-3">
           <i className="fas fa-exclamation-triangle text-warning me-2" />
@@ -261,7 +272,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "bandwidth" ? "active" : ""}`}
-                      onClick={() => setActiveTab("bandwidth")}
+                      onClick={() => switchTab("bandwidth")}
                     >
                       Bandwidth
                     </button>
@@ -271,7 +282,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_users" ? "active" : ""}`}
-                      onClick={() => setActiveTab("cp_users")}
+                      onClick={() => switchTab("cp_users")}
                     >
                       ইউজার
                     </button>
@@ -281,7 +292,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_collection" ? "active" : ""}`}
-                      onClick={() => setActiveTab("cp_collection")}
+                      onClick={() => switchTab("cp_collection")}
                     >
                       কালেকশন
                     </button>
@@ -291,7 +302,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_products" ? "active" : ""}`}
-                      onClick={() => setActiveTab("cp_products")}
+                      onClick={() => switchTab("cp_products")}
                     >
                       প্রোডাক্ট
                     </button>
@@ -301,7 +312,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_commission" ? "active" : ""}`}
-                      onClick={() => setActiveTab("cp_commission")}
+                      onClick={() => switchTab("cp_commission")}
                     >
                       কমিশন
                     </button>
@@ -311,7 +322,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_statement" ? "active" : ""}`}
-                      onClick={() => setActiveTab("cp_statement")}
+                      onClick={() => switchTab("cp_statement")}
                     >
                       স্টেটমেন্ট
                     </button>
@@ -321,7 +332,7 @@ const ResellerProfile = () => {
                   <li className="nav-item">
                     <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "statement" ? "active" : ""}`}
-                      onClick={() => setActiveTab("statement")}
+                      onClick={() => switchTab("statement")}
                     >
                       Statement
                     </button>
@@ -577,6 +588,8 @@ const ResellerProfile = () => {
           <div className="spinner-border text-light" />
         </div>
       )}
+
+      {confirmAction && <ConfirmDialog message={confirmAction.message} onConfirm={executeConfirm} onCancel={() => setConfirmAction(null)} />}
     </div>
   );
 };

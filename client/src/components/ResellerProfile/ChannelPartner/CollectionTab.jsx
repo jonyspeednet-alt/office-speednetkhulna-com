@@ -31,23 +31,11 @@ const CollectionTab = ({
       <div className="row g-2 g-md-3 mb-3 mb-md-4 mt-1">
         <div className="col-6 col-lg-3">
           <div
-            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden position-relative"
-            style={{
-              background: "linear-gradient(135deg, #4318ff 0%, #7c58ff 100%)",
-            }}
+            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden position-relative rp-gradient-purple"
           >
             <div className="card-body p-3 text-white">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <div
-                  className="rounded-circle bg-white bg-opacity-20 p-2"
-                  style={{
-                    width: 35,
-                    height: 35,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
+                <div className="rp-gradient-icon">
                   <i className="fas fa-users" />
                 </div>
                 <span className="small opacity-75">মোট ইউজার</span>
@@ -59,23 +47,11 @@ const CollectionTab = ({
         </div>
         <div className="col-6 col-lg-3">
           <div
-            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden"
-            style={{
-              background: "linear-gradient(135deg, #05cd99 0%, #00a38d 100%)",
-            }}
+            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden rp-gradient-green"
           >
             <div className="card-body p-3 text-white">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <div
-                  className="rounded-circle bg-white bg-opacity-20 p-2"
-                  style={{
-                    width: 35,
-                    height: 35,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
+                <div className="rp-gradient-icon">
                   <i className="fas fa-money-bill-wave" />
                 </div>
                 <span className="small opacity-75">মোট কালেকশন</span>
@@ -97,23 +73,11 @@ const CollectionTab = ({
         </div>
         <div className="col-6 col-lg-3">
           <div
-            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden"
-            style={{
-              background: "linear-gradient(135deg, #ffb547 0%, #ff8f00 100%)",
-            }}
+            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden rp-gradient-amber"
           >
             <div className="card-body p-3 text-white">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <div
-                  className="rounded-circle bg-white bg-opacity-20 p-2"
-                  style={{
-                    width: 35,
-                    height: 35,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
+                <div className="rp-gradient-icon">
                   <i className="fas fa-hand-holding-usd" />
                 </div>
                 <span className="small opacity-75">বকেয়া বিল</span>
@@ -127,23 +91,11 @@ const CollectionTab = ({
         </div>
         <div className="col-6 col-lg-3">
           <div
-            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden"
-            style={{
-              background: "linear-gradient(135deg, #111 0%, #333 100%)",
-            }}
+            className="card border-0 shadow-sm rounded-4 h-100 overflow-hidden rp-gradient-dark"
           >
             <div className="card-body p-3 text-white">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <div
-                  className="rounded-circle bg-white bg-opacity-20 p-2"
-                  style={{
-                    width: 35,
-                    height: 35,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
+                <div className="rp-gradient-icon">
                   <i className="fas fa-chart-line" />
                 </div>
                 <span className="small opacity-75">কালেকশন হার</span>
@@ -193,7 +145,7 @@ const CollectionTab = ({
 
       <div className="rp-mobile-list d-md-none mb-3">
         {cpUserPayments.length === 0 ? (
-          <div className="text-center text-muted py-4 small">ইনিশিয়ালাইজ করুন বা Excel ইম্পোর্ট করুন</div>
+          <div className="text-center text-muted py-4 small"><i className="fas fa-inbox d-block mb-2" style={{ fontSize: '1.5rem' }} />ইনিশিয়ালাইজ করুন বা Excel ইম্পোর্ট করুন</div>
         ) : (
           cpUserPayments.map((p) => {
             const pending = getPending(p);
@@ -255,6 +207,7 @@ const CollectionTab = ({
             {cpUserPayments.length === 0 ? (
               <tr>
                 <td colSpan="8" className="text-center text-muted py-4">
+                  <i className="fas fa-inbox d-block mb-1" />
                   এই মাসের জন্য কোনো রেকর্ড নেই। &quot;ইনিশিয়ালাইজ&quot; বাটনে
                   ক্লিক করুন।
                 </td>

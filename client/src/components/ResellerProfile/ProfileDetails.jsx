@@ -14,7 +14,7 @@ const ProfileDetails = ({ reseller, can, onEditClick }) => {
 
     return (
         <>
-            <div className="card p-3 mb-3">
+            <div className="card p-2 p-sm-3 mb-3">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                     <h6 className="fw-bold text-muted text-uppercase small m-0">প্রোফাইল বিস্তারিত</h6>
                     {can.can_edit_profile && (
@@ -87,7 +87,7 @@ const ProfileDetails = ({ reseller, can, onEditClick }) => {
                     </DetailRow>
                 </div>
             </div>
-            <div className="card p-3 mb-3">
+            <div className="card p-2 p-sm-3 mb-3">
                 <h6 className="fw-bold text-muted text-uppercase small m-0 mb-2">Real IP</h6>
                 <div className="rp-details-grid rp-details-2col">
                     <DetailRow label="Quantity">{Number(reseller.real_ip_count || 0).toLocaleString('bn-BD')}</DetailRow>

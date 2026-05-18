@@ -156,7 +156,7 @@ export const useResellerProfile = (profileId) => {
       setDiscountNote("");
       await load();
     } catch (err) {
-      window.alert(err?.response?.data?.message || "Discount save failed");
+      toast.error(err?.response?.data?.message || "Discount save failed");
     }
   };
 
@@ -233,12 +233,12 @@ export const useResellerProfile = (profileId) => {
         result?.new_projected_bill !== undefined &&
         result?.new_projected_bill !== null
       ) {
-        window.alert(
-          `✅ রেট পরিবর্তন সফল!\n\nনতুন Projected Bill: ${Number(result.new_projected_bill).toLocaleString("en-BD", { minimumFractionDigits: 2 })} Tk`,
+        toast.success(
+          `রেট পরিবর্তন সফল! নতুন Projected Bill: ${Number(result.new_projected_bill).toLocaleString("en-BD", { minimumFractionDigits: 2 })} Tk`,
         );
       }
     } catch (err) {
-      window.alert(err?.response?.data?.message || "রেট পরিবর্তন সেভ হয়নি");
+      toast.error(err?.response?.data?.message || "রেট পরিবর্তন সেভ হয়নি");
     } finally {
       setRateChangeSaving(false);
     }

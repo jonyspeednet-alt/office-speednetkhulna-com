@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { money } from "../../../utils/formatters";
+import ModalWrap from "../ModalWrap";
 
 const ProductsTab = ({
   cpUsers,
@@ -182,83 +183,25 @@ const ProductsTab = ({
       </section>
       {/* Manual Product Charge Modal */}
       {showManualProductCharge && (
-        <div className="modal show d-block" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow">
-              <div className="modal-header bg-light border-bottom-0">
-                <h5 className="modal-title fw-bold text-dark">
-                  ম্যানুয়াল প্রোডাক্ট চার্জ
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close shadow-none"
-                  onClick={() => setShowManualProductCharge(false)}
-                />
-              </div>
-              <div className="modal-body p-4">
-                <form id="manualProductChargeForm" onSubmit={handleSaveManualProductCharge}>
-                  <div className="mb-3">
-                    <label className="form-label text-muted small fw-medium">
-                      মোট প্রোডাক্ট চার্জ (টাকা)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-control shadow-none"
-                      placeholder="যেমন: 2500"
-                      value={manualProductChargeForm.amount}
-                      onChange={(e) =>
-                        setManualProductChargeForm({ ...manualProductChargeForm, amount: e.target.value })
-                      }
-                    />
-                    <small className="text-muted d-block mt-1">
-                      {isOverridden ? "ফাঁকা রাখলে পুনরায় অটো-ক্যালকুলেট সিস্টেমে ফিরে যাবে।" : "কোনো অ্যামাউন্ট দিলে ইউজার প্রোডাক্টের মোট হিসাব ওভাররাইড হবে।"}
-                    </small>
-                  </div>
-                  <div className="mb-0">
-                    <label className="form-label text-muted small fw-medium">
-                      মন্তব্য (ঐচ্ছিক)
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control shadow-none"
-                      placeholder="যেমন: অতিরিক্ত ক্যাবল চার্জ..."
-                      value={manualProductChargeForm.note}
-                      onChange={(e) =>
-                        setManualProductChargeForm({ ...manualProductChargeForm, note: e.target.value })
-                      }
-                    />
-                  </div>
-                </form>
-              </div>
-              <div className="modal-footer border-top-0 bg-light">
-                <button
-                  type="button"
-                  className="btn btn-light border px-4"
-                  onClick={() => setShowManualProductCharge(false)}
-                  disabled={manualProductChargeLoading}
-                >
-                  বাতিল করুন
-                </button>
-                <button
-                  type="submit"
-                  form="manualProductChargeForm"
-                  className="btn btn-primary px-4 d-flex align-items-center gap-2"
-                  disabled={manualProductChargeLoading}
-                >
-                  {manualProductChargeLoading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm" />
-                      সেভ হচ্ছে...
-                    </>
-                  ) : (
-                    "সংরক্ষণ করুন"
-                  )}
-                </button>
-              </div>
+        <ModalWrap title="ম্যানুয়াল প্রোডাক্ট চার্জ" onClose={() => setShowManualProductCharge(false)} size="sm">
+          <form onSubmit={handleSaveManualProductCharge}>
+            <div className="mb-3">
+              <label className="form-label text-muted small fw-medium">মোট প্রোডাক্ট চার্জ (টাকা)</label>
+              <input type="number" step="0.01" className="form-control shadow-none" placeholder="যেমন: 2500" value={manualProductChargeForm.amount} onChange={(e) => setManualProductChargeForm({ ...manualProductChargeForm, amount: e.target.value })} />
+              <small className="text-muted d-block mt-1">{isOverridden ? 'ফাঁকা রাখলে পুনরায় অটো-ক্যালকুলেট সিস্টেমে ফিরে যাবে।' : 'কোনো অ্যামাউন্ট দিলে ইউজার প্রোডাক্টের মোট হিসাব ওভাররাইড হবে।'}</small>
             </div>
-          </div>
-        </div>
+            <div className="mb-3">
+              <label className="form-label text-muted small fw-medium">মন্তব্য (ঐচ্ছিক)</label>
+              <input type="text" className="form-control shadow-none" placeholder="যেমন: অতিরিক্ত ক্যাবল চার্জ..." value={manualProductChargeForm.note} onChange={(e) => setManualProductChargeForm({ ...manualProductChargeForm, note: e.target.value })} />
+            </div>
+            <div className="d-flex justify-content-end gap-2">
+              <button type="button" className="btn btn-light border rounded-pill px-4" onClick={() => setShowManualProductCharge(false)} disabled={manualProductChargeLoading}>বাতিল করুন</button>
+              <button type="submit" className="btn btn-primary rounded-pill px-4 fw-bold" disabled={manualProductChargeLoading}>
+                {manualProductChargeLoading ? <><span className="spinner-border spinner-border-sm me-1" />সেভ হচ্ছে...</> : 'সংরক্ষণ করুন'}
+              </button>
+            </div>
+          </form>
+        </ModalWrap>
       )}
     </section>
   );

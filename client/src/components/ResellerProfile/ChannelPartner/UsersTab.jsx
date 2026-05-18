@@ -29,7 +29,7 @@ const UsersTab = ({ cpUsers, cpUserSearch, setCpUserSearch, onAddUser, onEditUse
             </div>
 
             {filteredUsers.length === 0 ? (
-                <div className="text-center text-muted py-5">কোনো ইউজার নেই</div>
+                <div className="text-center text-muted py-5"><i className="fas fa-users d-block mb-2" style={{ fontSize: '1.5rem' }} />কোনো ইউজার নেই</div>
             ) : (
                 <>
                     <div className="rp-mobile-list d-md-none">
