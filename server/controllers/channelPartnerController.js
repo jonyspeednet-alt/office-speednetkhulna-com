@@ -896,24 +896,24 @@ const adjustCommission = async (req, res) => {
            net_commission = gross_commission
              - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
              - COALESCE(deferred_amount, 0)
-             + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
-             - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END,
+             + CASE WHEN $5 = 'adjustments' THEN $1 ELSE COALESCE(adjustments, 0) END
+             - CASE WHEN $5 = 'deductions' THEN $1 ELSE COALESCE(deductions, 0) END,
            total_payable = gross_commission
              - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
              - COALESCE(deferred_amount, 0)
-             + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
-             - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END
+             + CASE WHEN $5 = 'adjustments' THEN $1 ELSE COALESCE(adjustments, 0) END
+             - CASE WHEN $5 = 'deductions' THEN $1 ELSE COALESCE(deductions, 0) END
              + previous_balance,
            closing_balance = gross_commission
              - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
              - COALESCE(deferred_amount, 0)
-             + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
-             - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END
+             + CASE WHEN $5 = 'adjustments' THEN $1 ELSE COALESCE(adjustments, 0) END
+             - CASE WHEN $5 = 'deductions' THEN $1 ELSE COALESCE(deductions, 0) END
              + previous_balance - paid_amount,
            updated_at = NOW()
        WHERE id = $3 AND reseller_id = $4 AND status = 'draft'
        RETURNING *`,
-      [amt, finalNote, logId, resellerId],
+      [amt, finalNote, logId, resellerId, updateField],
     );
 
     if (!result.rows.length) {
@@ -1628,8 +1628,23 @@ const initiateReconciliation = async (req, res) => {
 
     const partnerAdvances = Number(advancesResult.rows[0].total_advances || 0);
 
-    // Calculate net commission
-    const netCommission = grossCommission - partnerAdvances;
+    // Get product deduction for this month (matches generateCommissionInternal logic)
+    const productDeduction = await getProductDeductionForMonth(resellerId, month);
+
+    // Get existing adjustments/deductions from commission log if it exists
+    const existingCommLog = await pool.query(
+      `SELECT COALESCE(adjustments, 0)::numeric AS adjustments, COALESCE(deductions, 0)::numeric AS deductions
+       FROM channel_commission_logs WHERE reseller_id = $1 AND month = $2`,
+      [resellerId, month],
+    );
+    const adjustments = Number(existingCommLog.rows[0]?.adjustments || 0);
+    const deductions = Number(existingCommLog.rows[0]?.deductions || 0);
+
+    // Calculate net commission — matches generateCommissionInternal formula
+    const totalDeferred = Number(summary.total_deferred || 0);
+    const netCommission = roundAmount(
+      grossCommission - partnerAdvances - productDeduction - totalDeferred + adjustments - deductions,
+    );
 
     // Get snapshot data
     const paymentsResult = await pool.query(
@@ -1673,6 +1688,9 @@ const initiateReconciliation = async (req, res) => {
         total_deferred: summary.total_deferred,
         gross_commission: grossCommission,
         partner_advances: partnerAdvances,
+        product_deduction: productDeduction,
+        adjustments: adjustments,
+        deductions: deductions,
         net_commission: netCommission,
       },
     };
@@ -2181,7 +2199,6 @@ module.exports = {
   rejectReconciliation,
   getReconciliations,
   getReconciliationDetails,
-  downloadReconciliationReport,
   downloadReconciliationReport,
   getManualProductCharge,
   saveManualProductCharge,

@@ -179,11 +179,13 @@ const finalizeResellerBill = async (client, { resellerId, monthYm, adjustment, a
 
     // 4. Calculate Previous Due
     // Sum of all monthly_bills + adjustments - Sum of all payments/discounts BEFORE this month
+    // Uses COALESCE fallback for log_type to handle legacy records where log_type column is NULL
+    const logTypeExpr = `COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END)`;
     const financialSummary = await client.query(
         `SELECT 
             (SELECT COALESCE(SUM(amount + adjustment), 0) FROM monthly_bills WHERE reseller_id = $1 AND bill_month < $2::date) AS total_billed,
-            (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND effective_date < $2::date AND log_type IN ('product', 'product_charge', 'charge')) AS total_product_charges,
-            (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND effective_date < $2::date AND log_type IN ('payment', 'discount')) AS total_paid`,
+            (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND COALESCE(effective_date, created_at) < $2::date AND ${logTypeExpr} IN ('product', 'product_charge', 'charge')) AS total_product_charges,
+            (SELECT COALESCE(SUM(transaction_amount), 0) FROM billing_logs WHERE reseller_id = $1 AND COALESCE(effective_date, created_at) < $2::date AND ${logTypeExpr} IN ('payment', 'discount')) AS total_paid`,
         [resellerId, info.monthStartStr]
     );
     const previousDue = Number(financialSummary.rows[0].total_billed) + Number(financialSummary.rows[0].total_product_charges) - Number(financialSummary.rows[0].total_paid);
@@ -333,13 +335,15 @@ const getMonthlySummary = async (req, res) => {
         }, {});
 
         // 3. Fetch payments and discounts from billing_logs for the target month
+        // Uses COALESCE fallback for log_type and effective_date to match details.js logic
+        const msLogTypeExpr = `COALESCE(to_jsonb(billing_logs)->>'log_type', CASE WHEN LOWER(COALESCE(change_desc,'')) LIKE 'discount:%' THEN 'discount' WHEN COALESCE(transaction_amount,0) > 0 THEN 'payment' ELSE 'adjustment' END)`;
         const logsResult = await pool.query(
             `SELECT reseller_id, 
-                    SUM(CASE WHEN log_type IN ('payment', 'collection') THEN transaction_amount ELSE 0 END) AS paid,
-                    SUM(CASE WHEN log_type = 'discount' THEN transaction_amount ELSE 0 END) AS discount,
-                    SUM(CASE WHEN log_type IN ('product', 'product_charge', 'charge') THEN transaction_amount ELSE 0 END) AS product_charges
+                    SUM(CASE WHEN ${msLogTypeExpr} IN ('payment') THEN transaction_amount ELSE 0 END) AS paid,
+                    SUM(CASE WHEN ${msLogTypeExpr} = 'discount' THEN transaction_amount ELSE 0 END) AS discount,
+                    SUM(CASE WHEN ${msLogTypeExpr} IN ('product', 'product_charge', 'charge') THEN transaction_amount ELSE 0 END) AS product_charges
              FROM billing_logs 
-             WHERE TO_CHAR(effective_date, 'YYYY-MM') = $1
+             WHERE TO_CHAR(COALESCE(effective_date, created_at), 'YYYY-MM') = $1
              GROUP BY reseller_id`,
             [targetMonthYm]
         );
