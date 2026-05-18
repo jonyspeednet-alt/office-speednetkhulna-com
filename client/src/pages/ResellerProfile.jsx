@@ -193,7 +193,7 @@ const ResellerProfile = () => {
       data.reseller?.partner_type === "channel_partner" &&
       activeTab === "bandwidth"
     ) {
-      switchTab("cp_users");
+      switchTab("cp_profile");
     }
   }, [data, activeTab]);
 
@@ -255,17 +255,7 @@ const ResellerProfile = () => {
         onBillHistoryClick={() => setShowBillHistory(true)}
       />
 
-      <div className="row g-3">
-        <div className="col-12 col-lg-4 rp-order-side">
-          <ProfileDetails
-            reseller={reseller}
-            can={can}
-            onEditClick={() => setShowEdit(true)}
-          />
-        </div>
-
-        <div className="col-12 col-lg-8 rp-order-main">
-          <div className="card rp-tabs-card">
+      <div className="card rp-tabs-card">
             <div className="card-header border-0 bg-transparent p-2 p-sm-3">
               <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
                 <ul className="nav nav-pills rp-tabs-scroll flex-nowrap mb-0">
@@ -276,6 +266,16 @@ const ResellerProfile = () => {
                       onClick={() => switchTab("bandwidth")}
                     >
                       Bandwidth
+                    </button>
+                  </li>
+                )}
+                {isChannel && (
+                  <li className="nav-item">
+                    <button
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_profile" ? "active" : ""}`}
+                      onClick={() => switchTab("cp_profile")}
+                    >
+                      প্রোফাইল
                     </button>
                   </li>
                 )}
@@ -365,6 +365,14 @@ const ResellerProfile = () => {
 
               {activeTab === "statement" && can.can_view_financials && (
                 <StatementTab statementItems={statementItems} />
+              )}
+
+              {activeTab === "cp_profile" && isChannel && (
+                <ProfileDetails
+                  reseller={reseller}
+                  can={can}
+                  onEditClick={() => setShowEdit(true)}
+                />
               )}
 
               {activeTab === "cp_realip" && isChannel && (
@@ -458,8 +466,6 @@ const ResellerProfile = () => {
               )}
             </div>
           </div>
-        </div>
-      </div>
 
       {/* Modals */}
       {showPay && (
