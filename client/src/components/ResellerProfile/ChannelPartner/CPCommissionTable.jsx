@@ -179,7 +179,7 @@ const CPCommissionTable = ({ summary, reseller, fmtMoney }) => {
               <tr style={{ background: closingPos ? '#f0fdf4' : '#fef2f2' }}>
                 <td style={{ ...td, fontWeight: 700, fontSize: '1rem', color: closingPos ? '#15803d' : '#b91c1c' }}>
                   <i className={`fas ${closingPos ? 'fa-arrow-circle-up' : 'fa-arrow-circle-down'} me-2`} />
-                  {closingPos ? 'পার্টনারের পাওনা (কোম্পানি দেবে)' : 'পার্টনারের দেনা (পার্টনার দেবে)'}
+                  {closingPos ? 'পার্টনারের পাওনা' : 'পার্টনারের দেনা'}
                 </td>
                 <td style={tdCount}>—</td>
                 <td style={{ ...tdAmt, fontSize: '1.05rem', fontWeight: 700, color: closingPos ? '#15803d' : '#b91c1c' }}>

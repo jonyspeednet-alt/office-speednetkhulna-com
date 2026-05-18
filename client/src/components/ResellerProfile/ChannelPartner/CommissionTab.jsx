@@ -101,7 +101,7 @@ const CommissionBreakdown = ({ summary }) => {
       >
         <span className={`fw-bold ${closingIsPositive ? "text-success" : "text-danger"}`}>
           <i className={`fas ${closingIsPositive ? "fa-arrow-circle-up" : "fa-arrow-circle-down"} me-1`} />
-          {closingIsPositive ? "পার্টনারের পাওনা (কোম্পানি দেবে)" : "পার্টনারের দেনা (পার্টনার দেবে)"}
+          {closingIsPositive ? "পার্টনারের পাওনা" : "পার্টনারের দেনা"}
         </span>
         <span className={`fs-6 fw-bold ${closingIsPositive ? "text-success" : "text-danger"}`}>
           {money(Math.abs(closing))}
