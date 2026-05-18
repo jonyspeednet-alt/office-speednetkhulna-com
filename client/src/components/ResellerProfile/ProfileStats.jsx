@@ -116,14 +116,7 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
                                     {prevLabel}: {money(Math.abs(prevBal))}
                                 </small>
                             )}
-                            {totalDeferred > 0 && (
-                                <small>
-                                    <span className={`badge rounded-pill ${balanceBadgeClass} px-2 py-1`} style={{ fontSize: '0.7rem' }}>
-                                        <i className="fas fa-clock me-1" />
-                                        {nonPayingUsers} জন বাকি{partialPayingUsers > 0 ? ` (${partialPayingUsers} আংশিক)` : ''} · {money(totalDeferred)}
-                                    </span>
-                                </small>
-                            )}
+
                         </div>
                     </div>
                 </div>
