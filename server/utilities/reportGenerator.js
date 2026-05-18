@@ -83,6 +83,7 @@ async function generateReconciliationReport(reconciliation) {
             .fontSize(10)
             .text(`  Gross Commission / মোট কমিশন: ${formatCurrency(reconciliation.gross_commission)} BDT`)
             .text(`  Partner Advances / অগ্রিম পেমেন্ট: ${formatCurrency(reconciliation.partner_advances)} BDT`)
+            .text(`  Deferred Amount / বকেয়া বিল: ${formatCurrency(reconciliation.total_deferred)} BDT`)
             .text(`  Adjustments / সমন্বয়: ${formatCurrency(reconciliation.adjustments || 0)} BDT`)
             .text(`  Deductions / কর্তন: ${formatCurrency(reconciliation.deductions || 0)} BDT`)
             .moveDown(0.5);

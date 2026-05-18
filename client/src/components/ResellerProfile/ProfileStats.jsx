@@ -45,9 +45,6 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
     const monthLabel  = formatMonthLabel(summary.month);
     const closing     = Number(summary.closing_balance || 0);
     const prevBal     = Number(summary.previous_balance || 0);
-    const totalDeferred = Number(summary.total_deferred || 0);
-    const nonPayingUsers = Number(summary.non_paying_users || 0);
-    const partialPayingUsers = Number(summary.partial_paying_users || 0);
 
     // Balance direction: positive = company owes partner; negative = partner owes company
     const closingIsPositive = closing >= 0;

@@ -141,7 +141,7 @@ const CPCommissionTable = ({ summary, reseller, fmtMoney }) => {
             </tr>
           )}
 
-          {/* ⑨ নেট কমিশন — shown as মোট প্রদেয় when no prev balance or paid */}
+          {/* ⑨ নেট কমিশন — shown only when prev balance exists */}
           {prevBal !== 0 && (
             <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
               <td style={{ ...td, fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>নেট কমিশন (Net Commission)</td>
@@ -163,17 +163,42 @@ const CPCommissionTable = ({ summary, reseller, fmtMoney }) => {
             </tr>
           )}
 
-          {/* ⑪ মোট প্রদেয় / Closing */}
-          <tr style={{ background: closingPos ? '#f0fdf4' : '#fef2f2', borderTop: '2px solid #cbd5e1' }}>
-            <td style={{ ...td, fontWeight: 700, fontSize: '1rem', color: closingPos ? '#15803d' : '#b91c1c', borderTop: '2px solid #cbd5e1' }}>
-              <i className={`fas ${closingPos ? 'fa-arrow-circle-up' : 'fa-arrow-circle-down'} me-2`} />
-              মোট প্রদেয় (Total Payable)
-            </td>
-            <td style={{ ...tdCount, borderTop: '2px solid #cbd5e1' }}>—</td>
-            <td style={{ ...tdAmt, fontSize: '1.05rem', fontWeight: 700, color: closingPos ? '#15803d' : '#b91c1c', borderTop: '2px solid #cbd5e1' }}>
-              {fmt(Math.abs(closing))}
-            </td>
-          </tr>
+          {/* ⑪ মোট প্রদেয় — show total payable, then subtract paid if any */}
+          {paid > 0 ? (
+            <>
+              <tr style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
+                <td style={{ ...td, fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>মোট প্রদেয় (Total Payable)</td>
+                <td style={{ ...tdCount, borderTop: '2px solid #cbd5e1' }}>—</td>
+                <td style={{ ...tdAmt, fontSize: '0.97rem', fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>{fmt(totalPayable)}</td>
+              </tr>
+              <tr>
+                <td style={{ ...td, paddingLeft: 24, color: '#16a34a' }}>(−) পরিশোধিত (Paid)</td>
+                <td style={tdCount}>—</td>
+                <td style={{ ...tdAmt, color: '#16a34a' }}>(-) {fmt(paid)}</td>
+              </tr>
+              <tr style={{ background: closingPos ? '#f0fdf4' : '#fef2f2' }}>
+                <td style={{ ...td, fontWeight: 700, fontSize: '1rem', color: closingPos ? '#15803d' : '#b91c1c' }}>
+                  <i className={`fas ${closingPos ? 'fa-arrow-circle-up' : 'fa-arrow-circle-down'} me-2`} />
+                  {closingPos ? 'পার্টনারের পাওনা (কোম্পানি দেবে)' : 'পার্টনারের দেনা (পার্টনার দেবে)'}
+                </td>
+                <td style={tdCount}>—</td>
+                <td style={{ ...tdAmt, fontSize: '1.05rem', fontWeight: 700, color: closingPos ? '#15803d' : '#b91c1c' }}>
+                  {fmt(Math.abs(closing))}
+                </td>
+              </tr>
+            </>
+          ) : (
+            <tr style={{ background: closingPos ? '#f0fdf4' : '#fef2f2', borderTop: '2px solid #cbd5e1' }}>
+              <td style={{ ...td, fontWeight: 700, fontSize: '1rem', color: closingPos ? '#15803d' : '#b91c1c', borderTop: '2px solid #cbd5e1' }}>
+                <i className={`fas ${closingPos ? 'fa-arrow-circle-up' : 'fa-arrow-circle-down'} me-2`} />
+                মোট প্রদেয় (Total Payable)
+              </td>
+              <td style={{ ...tdCount, borderTop: '2px solid #cbd5e1' }}>—</td>
+              <td style={{ ...tdAmt, fontSize: '1.05rem', fontWeight: 700, color: closingPos ? '#15803d' : '#b91c1c', borderTop: '2px solid #cbd5e1' }}>
+                {fmt(Math.abs(closing))}
+              </td>
+            </tr>
+          )}
 
         </tbody>
       </table>

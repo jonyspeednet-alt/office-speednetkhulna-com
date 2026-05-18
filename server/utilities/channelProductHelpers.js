@@ -44,15 +44,16 @@ const isCommissionMonthLocked = async (resellerId, monthYm) => {
 
 const recalcCommissionNet = (row) => {
   const gross = Number(row.gross_commission || 0);
-  const advances = Number(row.partner_advances || row.adjustments || 0);
+  const advances = Number(row.partner_advances || 0);
   const product = Number(row.product_deduction || 0);
+  const deferred = Number(row.deferred_amount || 0);
   const adjustments = Number(row.adjustments || 0);
   const deductions = Number(row.deductions || 0);
   const previous = Number(row.previous_balance || 0);
   const paid = Number(row.paid_amount || 0);
 
   const net = roundAmount(
-    gross - advances - product + adjustments - deductions,
+    gross - advances - product - deferred + adjustments - deductions,
   );
   const totalPayable = roundAmount(net + previous);
   const closing = roundAmount(totalPayable - paid);

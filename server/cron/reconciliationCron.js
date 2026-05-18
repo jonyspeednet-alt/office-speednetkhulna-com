@@ -84,8 +84,13 @@ function startReconciliationCron() {
 
           const partnerAdvances = parseFloat(advancesResult.rows[0].total_advances);
 
+          // Get product deduction for the month
+          const { sumProductDeduction } = require('../utilities/channelProductHelpers');
+          const productDeduction = await sumProductDeduction(reseller.id, monthStr);
+          const totalDeferred = parseFloat(summary.total_deferred) || 0;
+
           // Calculate net commission
-          const netCommission = grossCommission - partnerAdvances;
+          const netCommission = grossCommission - partnerAdvances - productDeduction - totalDeferred;
 
           // Get snapshot data
           const paymentsResult = await db.query(`
@@ -123,6 +128,7 @@ function startReconciliationCron() {
               total_collected: summary.total_collected,
               total_realized: summary.total_realized,
               total_deferred: summary.total_deferred,
+              product_deduction: productDeduction,
               gross_commission: grossCommission,
               partner_advances: partnerAdvances,
               net_commission: netCommission

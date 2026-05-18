@@ -89,9 +89,10 @@ class BillingReconciliation {
       const profitSharePct =
         parseFloat(resellerResult.rows[0]?.profit_share_percentage) || 0;
 
-      // Calculate expected commission
-      const totalCollection = parseFloat(total_realized) + totalAdvances;
-      const expectedCommission = (totalCollection * profitSharePct) / 100;
+      // Calculate expected commission on realized amount only (not including advances)
+      const totalRealized = parseFloat(total_realized) || 0;
+      const totalDeferredAmt = parseFloat(total_deferred) || 0;
+      const expectedCommission = (totalRealized * profitSharePct) / 100;
 
       // Create or update reconciliation log using the active Phase 4 schema.
       const reconciliationResult = await client.query(
@@ -117,13 +118,14 @@ class BillingReconciliation {
         [
           resellerId,
           reconciliationPeriod,
-          parseFloat(total_realized) + totalAdvances,
-          parseFloat(total_realized),
-          parseFloat(total_deferred),
+          totalRealized,
+          totalRealized,
+          totalDeferredAmt,
           expectedCommission,
           totalAdvances,
           expectedCommission -
-            totalAdvances +
+            totalAdvances -
+            totalDeferredAmt +
             parseFloat(total_adjustments) -
             parseFloat(total_deductions),
           initiatedBy,

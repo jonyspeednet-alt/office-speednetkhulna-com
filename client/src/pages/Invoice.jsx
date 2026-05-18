@@ -291,15 +291,7 @@ const Invoice = () => {
   if (data?.isChannel) {
     const reseller = data.reseller;
     const summary = data.cpCommission;
-    const gross        = Number(summary.gross_commission   || 0);
-    const advances     = Number(summary.partner_advances   || 0);
-    const prodDed      = Number(summary.product_deduction  || 0);
-    const adjVal       = Number(summary.adjustments        || 0);
-    const ded          = Number(summary.deductions         || 0);
     const net          = Number(summary.net_commission     || 0);
-    const prevBal      = Number(summary.previous_balance   || 0);
-    const totalPayable = Number(summary.total_payable      || 0);
-    const paid         = Number(summary.paid_to_partner    || 0);
     const closing      = Number(summary.closing_balance    || 0);
     const profitPct    = Number(summary.profit_share_percentage ?? reseller.profit_share_percentage ?? 0);
     const status       = summary.commission_status || 'draft';
