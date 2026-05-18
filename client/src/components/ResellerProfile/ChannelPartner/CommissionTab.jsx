@@ -36,12 +36,13 @@ const CommissionBreakdown = ({ summary }) => {
   const paid          = Number(summary.paid_to_partner    || 0);
   const closing       = Number(summary.closing_balance    || 0);
   const nonPaying     = Number(summary.non_paying_users   || 0);
+  const partialPaying = Number(summary.partial_paying_users || 0);
   const profitPct     = Number(summary.profit_share_percentage || 0);
   const realized      = Number(summary.total_realized     || summary.total_collected || 0);
 
   const rows = [
     { label: "আদায়কৃত বিল (Realized)",   value: realized,     sign: "neutral", bold: false },
-    deferred > 0 && { label: `(-) বকেয়া বিল (${nonPaying} জন বাকি)`, value: deferred, sign: "minus", bold: false },
+    deferred > 0 && { label: `(-) বকেয়া বিল (${nonPaying} জন বাকি${partialPaying > 0 ? `, ${partialPaying} আংশিক` : ''})`, value: deferred, sign: "minus", bold: false },
     { label: `× ${profitPct}% কমিশন = Gross`, value: gross,    sign: "neutral", bold: false },
     productDed > 0 && { label: "(-) প্রোডাক্ট কর্তন",   value: productDed,  sign: "minus", bold: false },
     advances > 0 && { label: "(-) পার্টনার অ্যাডভান্স", value: advances,    sign: "minus", bold: false },

@@ -25,6 +25,7 @@ const CPCommissionTable = ({ summary, reseller, fmtMoney }) => {
   const totalUsers    = Number(summary.total_users      || 0);
   const paying        = Number(summary.paying_users     || 0);
   const nonPaying     = Number(summary.non_paying_users || 0);
+  const partialPaying = Number(summary.partial_paying_users || 0);
   const collected     = Number(summary.total_collected  || 0);
   const realized      = Number(summary.total_realized   || summary.total_collected || 0);
   const deferred      = Number(summary.total_deferred   || 0);
@@ -93,7 +94,7 @@ const CPCommissionTable = ({ summary, reseller, fmtMoney }) => {
               <td style={{ ...td, color: '#dc2626', paddingLeft: 24 }}>
                 (−) গ্রাহক বকেয়া বিল (Deferred Amount)
               </td>
-              <td style={{ ...tdCount, color: '#dc2626' }}>{nonPaying.toLocaleString('bn-BD')} জন বাকি</td>
+              <td style={{ ...tdCount, color: '#dc2626' }}>{nonPaying.toLocaleString('bn-BD')} জন বাকি{partialPaying > 0 ? ` (${partialPaying.toLocaleString('bn-BD')} আংশিক)` : ''}</td>
               <td style={{ ...tdAmt, color: '#dc2626' }}>(-) {fmt(deferred)}</td>
             </tr>
           )}

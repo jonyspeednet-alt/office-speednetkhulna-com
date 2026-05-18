@@ -11,9 +11,9 @@ const CollectionTab = ({
   onImportClick,
 }) => {
   const getPending = (p) =>
-    Math.max(0, Number(p.amount_due || 0) - Number(p.amount_paid || 0));
+    Number(p.deferred_amount ?? Math.max(0, Number(p.amount_due || 0) - Number(p.amount_paid || 0)));
   const totalCollection = cpUserPayments.reduce(
-    (s, p) => s + Number(p.amount_paid || 0),
+    (s, p) => s + Number(p.realized_amount ?? p.amount_paid || 0),
     0,
   );
   const totalDue = cpUserPayments.reduce(
@@ -22,6 +22,8 @@ const CollectionTab = ({
   );
   const totalPending = cpUserPayments.reduce((s, p) => s + getPending(p), 0);
   const pendingUsers = cpUserPayments.filter((p) => getPending(p) > 0).length;
+  const payingUsers = cpUserPayments.filter((p) => Number(p.amount_paid || 0) > 0).length;
+  const partialUsers = cpUserPayments.filter((p) => Number(p.amount_paid || 0) > 0 && getPending(p) > 0).length;
   const collectionRate = Math.round((totalCollection / (totalDue || 1)) * 100);
 
   return (
@@ -118,7 +120,7 @@ const CollectionTab = ({
               </div>
               <h4 className="fw-bold mb-0">{money(totalPending)}</h4>
               <div className="small opacity-75 mt-1">
-                {pendingUsers} জনের বাকি আছে
+                {pendingUsers} জনের বাকি আছে{partialUsers > 0 ? ` (${partialUsers} আংশিক)` : ''}
               </div>
             </div>
           </div>

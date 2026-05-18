@@ -47,6 +47,7 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
     const prevBal     = Number(summary.previous_balance || 0);
     const totalDeferred = Number(summary.total_deferred || 0);
     const nonPayingUsers = Number(summary.non_paying_users || 0);
+    const partialPayingUsers = Number(summary.partial_paying_users || 0);
 
     // Balance direction: positive = company owes partner; negative = partner owes company
     const closingIsPositive = closing >= 0;
@@ -123,7 +124,7 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
                                 <small>
                                     <span className={`badge rounded-pill ${balanceBadgeClass} px-2 py-1`} style={{ fontSize: '0.7rem' }}>
                                         <i className="fas fa-clock me-1" />
-                                        {nonPayingUsers} জন বাকি · {money(totalDeferred)}
+                                        {nonPayingUsers} জন বাকি{partialPayingUsers > 0 ? ` (${partialPayingUsers} আংশিক)` : ''} · {money(totalDeferred)}
                                     </span>
                                 </small>
                             )}

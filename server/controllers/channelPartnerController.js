@@ -604,7 +604,8 @@ const getCommissionSummary = async (req, res) => {
     const collectionResult = await pool.query(
       `SELECT
         COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
-        COUNT(*) FILTER (WHERE amount_paid = 0 OR amount_paid IS NULL) AS non_paying_users,
+        COUNT(*) FILTER (WHERE amount_paid < amount_due OR (amount_paid IS NULL AND amount_due > 0)) AS non_paying_users,
+        COUNT(*) FILTER (WHERE amount_paid > 0 AND amount_paid < amount_due) AS partial_paying_users,
         COALESCE(SUM(amount_due), 0)::numeric AS total_due,
         COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
         COALESCE(SUM(realized_amount), 0)::numeric AS total_realized,
@@ -618,6 +619,7 @@ const getCommissionSummary = async (req, res) => {
     const totalRealized = Number(collection.total_realized || 0);
     const totalDeferred = Number(collection.total_deferred || 0);
     const payingUsers = Number(collection.paying_users || 0);
+    const partialPayingUsers = Number(collection.partial_paying_users || 0);
     const profitPct = Number(reseller.profit_share_percentage || 0);
     // Commission calculated on realized amount only (actually paid)
     const grossCommission = totalRealized * (profitPct / 100);
@@ -667,6 +669,7 @@ const getCommissionSummary = async (req, res) => {
       active_users: activeUsers,
       paying_users: payingUsers,
       non_paying_users: Number(collection.non_paying_users || 0),
+      partial_paying_users: partialPayingUsers,
       total_due: Number(collection.total_due || 0),
       total_collected: totalCollected,
       total_realized: totalRealized,
@@ -732,6 +735,7 @@ const generateCommissionInternal = async (resellerId, month) => {
     `SELECT
       COUNT(*) AS total_users,
       COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
+      COUNT(*) FILTER (WHERE amount_paid < amount_due OR (amount_paid IS NULL AND amount_due > 0)) AS non_paying_users,
       COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
       COALESCE(SUM(realized_amount), 0)::numeric AS total_realized,
       COALESCE(SUM(deferred_amount), 0)::numeric AS total_deferred
