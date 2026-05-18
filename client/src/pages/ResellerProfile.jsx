@@ -29,6 +29,7 @@ import CollectionTab from "../components/ResellerProfile/ChannelPartner/Collecti
 import CommissionTab from "../components/ResellerProfile/ChannelPartner/CommissionTab";
 import CPStatementTab from "../components/ResellerProfile/ChannelPartner/CPStatementTab";
 import ProductsTab from "../components/ResellerProfile/ChannelPartner/ProductsTab";
+import RealIPTab from "../components/ResellerProfile/ChannelPartner/RealIPTab";
 
 // Modal components
 import PaymentModal from "../components/ResellerProfile/Modals/PaymentModal";
@@ -281,6 +282,16 @@ const ResellerProfile = () => {
                 {isChannel && (
                   <li className="nav-item">
                     <button
+                      className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_realip" ? "active" : ""}`}
+                      onClick={() => switchTab("cp_realip")}
+                    >
+                      Real IP
+                    </button>
+                  </li>
+                )}
+                {isChannel && (
+                  <li className="nav-item">
+                    <button
                       className={`nav-link btn-sm py-1 px-3 ${activeTab === "cp_users" ? "active" : ""}`}
                       onClick={() => switchTab("cp_users")}
                     >
@@ -354,6 +365,10 @@ const ResellerProfile = () => {
 
               {activeTab === "statement" && can.can_view_financials && (
                 <StatementTab statementItems={statementItems} />
+              )}
+
+              {activeTab === "cp_realip" && isChannel && (
+                <RealIPTab reseller={reseller} can={can} />
               )}
 
               {activeTab === "cp_users" && isChannel && (
