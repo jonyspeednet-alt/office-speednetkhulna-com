@@ -681,7 +681,7 @@ const getCommissionSummary = async (req, res) => {
       net_commission: commissionLog
         ? Number(commissionLog.net_commission)
         : roundAmountHelper(
-          grossCommission - partnerAdvances - productDeduction,
+          grossCommission - partnerAdvances - productDeduction - totalDeferred,
         ),
       previous_balance: previousBalance,
       total_payable: commissionLog
@@ -689,7 +689,8 @@ const getCommissionSummary = async (req, res) => {
         : roundAmountHelper(
           grossCommission -
           partnerAdvances -
-          productDeduction +
+          productDeduction -
+          totalDeferred +
           previousBalance,
         ),
       paid_to_partner: totalPaidToPartner,
@@ -698,7 +699,8 @@ const getCommissionSummary = async (req, res) => {
         : roundAmountHelper(
           grossCommission -
           partnerAdvances -
-          productDeduction +
+          productDeduction -
+          totalDeferred +
           previousBalance -
           totalPaidToPartner,
         ),
@@ -731,7 +733,8 @@ const generateCommissionInternal = async (resellerId, month) => {
       COUNT(*) AS total_users,
       COUNT(*) FILTER (WHERE amount_paid > 0) AS paying_users,
       COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
-      COALESCE(SUM(realized_amount), 0)::numeric AS total_realized
+      COALESCE(SUM(realized_amount), 0)::numeric AS total_realized,
+      COALESCE(SUM(deferred_amount), 0)::numeric AS total_deferred
      FROM channel_user_payments
      WHERE reseller_id = $1 AND service_period = ${monthToDateSql("$2")}`,
     [resellerId, month],
@@ -739,6 +742,7 @@ const generateCommissionInternal = async (resellerId, month) => {
   const stats = collectionResult.rows[0] || {};
   const totalCollected = Number(stats.total_collected || 0);
   const totalRealized = Number(stats.total_realized || 0);
+  const totalDeferred = Number(stats.total_deferred || 0);
   // Commission calculated on realized amount (actually paid), not total collected
   const grossCommission = totalRealized * (profitPct / 100);
 
@@ -775,10 +779,12 @@ const generateCommissionInternal = async (resellerId, month) => {
 
   const manualAdjustments = 0;
   const manualDeductions = 0;
+  // Net commission deducts deferred (unpaid user bills) from gross
   const netCommission = roundAmount(
     grossCommission -
     partnerAdvances -
-    productDeduction +
+    productDeduction -
+    totalDeferred +
     manualAdjustments -
     manualDeductions,
   );
@@ -796,9 +802,9 @@ const generateCommissionInternal = async (resellerId, month) => {
     `INSERT INTO channel_commission_logs
       (reseller_id, month, total_users, paying_users, total_collection,
        profit_share_pct, gross_commission, partner_advances, product_deduction,
-       adjustments, deductions, net_commission, previous_balance, total_payable,
+       deferred_amount, adjustments, deductions, net_commission, previous_balance, total_payable,
        paid_amount, closing_balance, payment_status, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, $10, $11, $12, $13, $14, $15, 'draft')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, $11, $12, $13, $14, $15, $16, 'draft')
      ON CONFLICT (reseller_id, month) DO UPDATE SET
        total_users = EXCLUDED.total_users,
        paying_users = EXCLUDED.paying_users,
@@ -807,15 +813,19 @@ const generateCommissionInternal = async (resellerId, month) => {
        gross_commission = EXCLUDED.gross_commission,
        partner_advances = EXCLUDED.partner_advances,
        product_deduction = EXCLUDED.product_deduction,
+       deferred_amount = EXCLUDED.deferred_amount,
        net_commission = EXCLUDED.gross_commission - EXCLUDED.partner_advances - EXCLUDED.product_deduction
+         - EXCLUDED.deferred_amount
          + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0),
        previous_balance = EXCLUDED.previous_balance,
        total_payable = EXCLUDED.gross_commission - EXCLUDED.partner_advances - EXCLUDED.product_deduction
+         - EXCLUDED.deferred_amount
          + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance,
-       paid_amount = $13,
+       paid_amount = $14,
        closing_balance = EXCLUDED.gross_commission - EXCLUDED.partner_advances - EXCLUDED.product_deduction
-         + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $13,
-       payment_status = $15,
+         - EXCLUDED.deferred_amount
+         + COALESCE(channel_commission_logs.adjustments, 0) - COALESCE(channel_commission_logs.deductions, 0) + EXCLUDED.previous_balance - $14,
+       payment_status = $16,
        updated_at = NOW()
      RETURNING *`,
     [
@@ -828,6 +838,7 @@ const generateCommissionInternal = async (resellerId, month) => {
       grossCommission,
       partnerAdvances,
       productDeduction,
+      totalDeferred,
       netCommission,
       previousBalance,
       totalPayable,
@@ -880,15 +891,18 @@ const adjustCommission = async (req, res) => {
            ${noteField} = $2,
            net_commission = gross_commission
              - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
+             - COALESCE(deferred_amount, 0)
              + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
              - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END,
            total_payable = gross_commission
              - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
+             - COALESCE(deferred_amount, 0)
              + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
              - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END
              + previous_balance,
            closing_balance = gross_commission
              - COALESCE(partner_advances, 0) - COALESCE(product_deduction, 0)
+             - COALESCE(deferred_amount, 0)
              + CASE WHEN '${updateField}' = 'adjustments' THEN $1 ELSE adjustments END
              - CASE WHEN '${updateField}' = 'deductions' THEN $1 ELSE deductions END
              + previous_balance - paid_amount,

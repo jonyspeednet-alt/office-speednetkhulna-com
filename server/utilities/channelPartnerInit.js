@@ -361,6 +361,9 @@ const initChannelPartnerTables = async () => {
     await runQuery(
       `ALTER TABLE channel_commission_logs ADD COLUMN IF NOT EXISTS partner_advances NUMERIC(12,2) DEFAULT 0`,
     );
+    await runQuery(
+      `ALTER TABLE channel_commission_logs ADD COLUMN IF NOT EXISTS deferred_amount NUMERIC(12,2) DEFAULT 0`,
+    );
 
     const requiredObjects = await pool.query(`
       SELECT
