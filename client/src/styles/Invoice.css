@@ -32,8 +32,8 @@
 /* --- Watermark --- */
 .inv-watermark {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: 80px;
+  right: 24px;
   transform: none;
   font-size: 0.72rem;
   font-weight: 800;
@@ -260,7 +260,7 @@
 
 @media (max-width: 768px) {
   .inv-watermark {
-    top: 14px;
+    top: 70px;
     right: 14px;
     font-size: 0.68rem;
     padding: 5px 10px;
