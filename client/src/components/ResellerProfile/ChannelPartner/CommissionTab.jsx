@@ -9,11 +9,11 @@ const BalanceBadge = ({ value, zeroLabel = "শূন্য" }) => {
   const abs = Math.abs(value);
   const isPositive = value > 0;
   return (
-    <span className={`fw-bold ${isPositive ? "text-success" : "text-danger"}`}>
+    <span className={`fw-bold d-inline-flex align-items-center gap-1 ${isPositive ? "text-success" : "text-danger"}`}>
       {isPositive ? "▲" : "▼"} {money(abs)}
       <span
-        className={`badge ms-1 rounded-pill ${isPositive ? "bg-success" : "bg-danger"} bg-opacity-10 border ${isPositive ? "border-success" : "border-danger"} border-opacity-25`}
-        style={{ fontSize: "0.65rem" }}
+        className={`badge rounded-pill ${isPositive ? "bg-success" : "bg-danger"} bg-opacity-10 border ${isPositive ? "border-success" : "border-danger"} border-opacity-25`}
+        style={{ fontSize: "0.7rem", lineHeight: "1.3", padding: "2px 8px", whiteSpace: "nowrap" }}
       >
         {isPositive ? "পার্টনার পাবে" : "কোম্পানি পাবে"}
       </span>
