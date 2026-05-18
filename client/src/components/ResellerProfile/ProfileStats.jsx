@@ -94,11 +94,7 @@ const ProfileStats = ({ isChannel, can, stats, reseller, cpCommission, cpLoading
                 <StatCard
                     label={`কমিশন (${profitPct}%)`}
                     value={money(summary.gross_commission)}
-                    sub={
-                        totalDeferred > 0
-                            ? `বকেয়া বিল (-${money(totalDeferred)}) · নেট: ${money(summary.net_commission)}`
-                            : `নেট: ${money(summary.net_commission)}`
-                    }
+                    sub={`নেট: ${money(summary.net_commission)}`}
                     valueClass="text-success"
                     icon="fas fa-percentage"
                 />
