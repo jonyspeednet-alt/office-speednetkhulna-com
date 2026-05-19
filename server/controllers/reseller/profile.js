@@ -21,6 +21,7 @@ const {
   detectPartnerTypeColumn,
   detectOtcAppliedMonthColumn,
   joiningDateExpr,
+  hasResellerJoiningDateColumn,
   hasResellerPartnerTypeColumn,
   hasResellerOtcAppliedMonthColumn,
   detectChannelPartnerColumns,
