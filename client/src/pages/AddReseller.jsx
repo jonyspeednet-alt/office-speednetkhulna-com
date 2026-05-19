@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { createReseller } from "../services/resellerService";
 
 // ── Initial form state ────────────────────────────────────────────────────────
@@ -293,6 +293,10 @@ const AddReseller = () => {
   }));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedPartnerName, setSavedPartnerName] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const navigate = useNavigate();
 
   const currentPartnerType =
     normalizePartnerType(form.partner_type) || "distribution_partner";
@@ -366,9 +370,16 @@ const AddReseller = () => {
       partner_type: requestedPartnerType || init.partner_type,
     });
 
-  const submit = async (e) => {
+  const handleSaveClick = (e) => {
     e.preventDefault();
+    setErrorMsg("");
+    setShowConfirm(true);
+  };
+
+  const submit = async () => {
+    setShowConfirm(false);
     setSaving(true);
+    setErrorMsg("");
     try {
       await createReseller({
         ...form,
@@ -380,12 +391,13 @@ const AddReseller = () => {
           normalizePartnerType(form.partner_type) || "distribution_partner",
         status: "active",
       });
+      setSavedPartnerName(form.reseller_name);
       setSaved(true);
-      setTimeout(() => setSaved(false), 4000);
       handleReset();
+      setTimeout(() => { setSaved(false); setSavedPartnerName(""); }, 6000);
     } catch (err) {
       const msg = err?.response?.data?.detail || err?.response?.data?.message || "Partner profile save failed.";
-      window.alert(msg);
+      setErrorMsg(msg);
     } finally {
       setSaving(false);
     }
@@ -483,7 +495,7 @@ const AddReseller = () => {
       </div>
 
       {/* ── Main Layout ─────────────────────────────────────────────────────── */}
-      <form onSubmit={submit}>
+      <form onSubmit={handleSaveClick}>
         <div className="row g-4 align-items-start">
           {/* ═══ Left: Form Sections ═══════════════════════════════════════════ */}
           <div className="col-lg-8">
@@ -1479,34 +1491,6 @@ const AddReseller = () => {
 
                 {/* Actions */}
                 <div style={{ padding: "1.25rem 1.5rem" }}>
-                  {saved && (
-                    <div
-                      style={{
-                        background: "#ecfdf5",
-                        borderRadius: 10,
-                        padding: "0.6rem 0.9rem",
-                        marginBottom: "0.75rem",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        border: "1px solid #bbf7d0",
-                      }}
-                    >
-                      <i
-                        className="fas fa-check-circle"
-                        style={{ color: "#059669", fontSize: "0.9rem" }}
-                      />
-                      <span
-                        style={{
-                          color: "#059669",
-                          fontSize: "0.82rem",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Partner saved successfully!
-                      </span>
-                    </div>
-                  )}
                   <button
                     type="submit"
                     disabled={saving}
@@ -1580,6 +1564,257 @@ const AddReseller = () => {
         </div>
         {/* /row */}
       </form>
+
+      {/* ── Success Toast (top of page) ──────────────────────────────────────── */}
+      {saved && (
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            zIndex: 9999,
+            background: "#ecfdf5",
+            border: "1px solid #bbf7d0",
+            borderRadius: 14,
+            padding: "1rem 1.5rem",
+            boxShadow: "0 8px 30px rgba(5,150,105,0.18)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            maxWidth: 480,
+            animation: "slideInRight 0.35s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #059669, #34d399)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <i className="fas fa-check" style={{ color: "#fff", fontSize: "1.1rem" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: "#059669", fontSize: "0.92rem" }}>
+              Partner Saved Successfully!
+            </div>
+            {savedPartnerName && (
+              <div style={{ color: "#047857", fontSize: "0.82rem", marginTop: 2 }}>
+                "{savedPartnerName}" has been added as {activeType.label}
+              </div>
+            )}
+          </div>
+          <Link
+            to="/reseller-list"
+            style={{
+              background: "#059669",
+              color: "#fff",
+              borderRadius: 8,
+              padding: "6px 14px",
+              textDecoration: "none",
+              fontWeight: 600,
+              fontSize: "0.78rem",
+              whiteSpace: "nowrap",
+            }}
+          >
+            View List
+          </Link>
+        </div>
+      )}
+
+      {/* ── Error Toast (top of page) ────────────────────────────────────────── */}
+      {errorMsg && (
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            right: 20,
+            zIndex: 9999,
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: 14,
+            padding: "1rem 1.5rem",
+            boxShadow: "0 8px 30px rgba(220,38,38,0.15)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            maxWidth: 520,
+            animation: "slideInRight 0.35s ease-out",
+          }}
+        >
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #dc2626, #f87171)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <i className="fas fa-times" style={{ color: "#fff", fontSize: "1.1rem" }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: "#b91c1c", fontSize: "0.92rem" }}>
+              Save Failed
+            </div>
+            <div style={{ color: "#991b1b", fontSize: "0.82rem", marginTop: 2, wordBreak: "break-word" }}>
+              {errorMsg}
+            </div>
+          </div>
+          <button
+            onClick={() => setErrorMsg("")}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#b91c1c",
+              cursor: "pointer",
+              fontSize: "1rem",
+              padding: 4,
+            }}
+          >
+            <i className="fas fa-times" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Confirmation Modal ────────────────────────────────────────────────── */}
+      {showConfirm && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            animation: "fadeIn 0.2s ease-out",
+          }}
+          onClick={() => setShowConfirm(false)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 18,
+              padding: "2rem",
+              maxWidth: 440,
+              width: "90%",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+              animation: "scaleIn 0.25s ease-out",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ textAlign: "center", marginBottom: "1.25rem" }}>
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: "50%",
+                  background: `${activeType.light}`,
+                  border: `2px solid ${activeType.border}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 1rem",
+                }}
+              >
+                <i
+                  className="fas fa-save"
+                  style={{ color: activeType.color, fontSize: "1.3rem" }}
+                />
+              </div>
+              <h6 style={{ fontWeight: 700, color: "#111827", margin: 0, fontSize: "1.05rem" }}>
+                Confirm Save Partner
+              </h6>
+              <p style={{ color: "#6b7280", fontSize: "0.85rem", marginTop: 6, marginBottom: 0 }}>
+                Are you sure you want to save this partner profile?
+              </p>
+              {form.reseller_name && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    background: "#f9fafb",
+                    borderRadius: 10,
+                    padding: "0.6rem 1rem",
+                    display: "inline-block",
+                  }}
+                >
+                  <span style={{ color: "#9ca3af", fontSize: "0.78rem" }}>Partner:</span>{" "}
+                  <span style={{ fontWeight: 700, color: activeType.color, fontSize: "0.88rem" }}>
+                    {form.reseller_name}
+                  </span>
+                  <span style={{ color: "#9ca3af", fontSize: "0.78rem", marginLeft: 8 }}>Type:</span>{" "}
+                  <span style={{ fontWeight: 600, color: "#374151", fontSize: "0.82rem" }}>
+                    {activeType.label}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                style={{
+                  flex: 1,
+                  background: "#f9fafb",
+                  border: "1px solid #e5e7eb",
+                  color: "#374151",
+                  borderRadius: 10,
+                  padding: "0.65rem",
+                  fontWeight: 600,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                style={{
+                  flex: 1,
+                  background: `linear-gradient(${activeType.gradient})`,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "0.65rem",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  boxShadow: `0 4px 14px ${activeType.color}35`,
+                }}
+              >
+                <i className="fas fa-check" style={{ marginRight: 6 }} />
+                Yes, Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Animations ────────────────────────────────────────────────────────── */}
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0.9); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };
