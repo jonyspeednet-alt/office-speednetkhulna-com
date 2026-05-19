@@ -406,45 +406,49 @@ const createReseller = async (req, res) => {
     const actor = getActor(req);
     const reqMeta = getReqMeta(req);
 
-    await logResellerFinancialChange(client, {
-      reseller_id: newResellerId,
-      ...actor,
-      ...reqMeta,
-      action_type: "CREATE_RESELLER_FINANCIAL_BASELINE",
-      reference_table: "resellers",
-      reference_id: newResellerId,
-      amount_before: 0,
-      amount_after: Math.round(projectedBill * 100) / 100,
-      amount_delta: Math.round(projectedBill * 100) / 100,
-      due_before: 0,
-      due_after: parseAmount(due_amount, 0),
-      due_delta: parseAmount(due_amount, 0),
-      field_changes: {
-        current_projected_bill: {
-          old: 0,
-          new: Math.round(projectedBill * 100) / 100,
+    try {
+      await logResellerFinancialChange(client, {
+        reseller_id: newResellerId,
+        ...actor,
+        ...reqMeta,
+        action_type: "CREATE_RESELLER_FINANCIAL_BASELINE",
+        reference_table: "resellers",
+        reference_id: newResellerId,
+        amount_before: 0,
+        amount_after: Math.round(projectedBill * 100) / 100,
+        amount_delta: Math.round(projectedBill * 100) / 100,
+        due_before: 0,
+        due_after: parseAmount(due_amount, 0),
+        due_delta: parseAmount(due_amount, 0),
+        field_changes: {
+          current_projected_bill: {
+            old: 0,
+            new: Math.round(projectedBill * 100) / 100,
+          },
+          previous_month_due: { old: 0, new: parseAmount(due_amount, 0) },
+          security_deposit: { old: 0, new: parseAmount(security_deposit, 0) },
+          otc_charge: { old: 0, new: otcCharge },
+          real_ip_count: { old: 0, new: realIpCount },
+          real_ip_price: { old: 0, new: realIpPrice },
         },
-        previous_month_due: { old: 0, new: parseAmount(due_amount, 0) },
-        security_deposit: { old: 0, new: parseAmount(security_deposit, 0) },
-        otc_charge: { old: 0, new: otcCharge },
-        real_ip_count: { old: 0, new: realIpCount },
-        real_ip_price: { old: 0, new: realIpPrice },
-      },
-      note: "Reseller created with financial baseline",
-      request_payload: {
-        due_amount,
-        security_deposit,
-        initial_payment,
-        otc_charge: otcCharge,
-        real_ip_count: realIpCount,
-        real_ip_price: realIpPrice,
-      },
-    });
+        note: "Reseller created with financial baseline",
+        request_payload: {
+          due_amount,
+          security_deposit,
+          initial_payment,
+          otc_charge: otcCharge,
+          real_ip_count: realIpCount,
+          real_ip_price: realIpPrice,
+        },
+      });
+    } catch (auditErr) {
+      console.warn("createReseller: financial baseline audit log failed:", auditErr.message);
+    }
 
     if (initPayment > 0) {
       const paymentInsert = await client.query(
-        `INSERT INTO billing_logs (reseller_id, change_desc, effective_date, transaction_amount, created_at)
-         VALUES ($1,$2,$3::timestamp,$4,NOW())
+        `INSERT INTO billing_logs (reseller_id, change_desc, effective_date, transaction_amount, created_at, log_type)
+         VALUES ($1,$2,$3::timestamp,$4,NOW(),'payment')
          RETURNING id`,
         [
           newResellerId,
@@ -454,26 +458,30 @@ const createReseller = async (req, res) => {
         ],
       );
 
-      await logResellerFinancialChange(client, {
-        reseller_id: newResellerId,
-        ...actor,
-        ...reqMeta,
-        action_type: "ADD_INITIAL_PAYMENT",
-        reference_table: "billing_logs",
-        reference_id: paymentInsert.rows?.[0]?.id || null,
-        amount_before: 0,
-        amount_after: initPayment,
-        amount_delta: initPayment,
-        due_before: parseAmount(due_amount, 0),
-        due_after: parseAmount(due_amount, 0),
-        due_delta: 0,
-        field_changes: { payment_amount: initPayment },
-        note: `Initial payment logged for reseller ${newResellerId}`,
-        request_payload: {
-          initial_payment: initPayment,
-          effective_date: createdAt,
-        },
-      });
+      try {
+        await logResellerFinancialChange(client, {
+          reseller_id: newResellerId,
+          ...actor,
+          ...reqMeta,
+          action_type: "ADD_INITIAL_PAYMENT",
+          reference_table: "billing_logs",
+          reference_id: paymentInsert.rows?.[0]?.id || null,
+          amount_before: 0,
+          amount_after: initPayment,
+          amount_delta: initPayment,
+          due_before: parseAmount(due_amount, 0),
+          due_after: parseAmount(due_amount, 0),
+          due_delta: 0,
+          field_changes: { payment_amount: initPayment },
+          note: `Initial payment logged for reseller ${newResellerId}`,
+          request_payload: {
+            initial_payment: initPayment,
+            effective_date: createdAt,
+          },
+        });
+      } catch (auditErr) {
+        console.warn("createReseller: initial payment audit log failed:", auditErr.message);
+      }
     }
 
     await client.query("COMMIT");

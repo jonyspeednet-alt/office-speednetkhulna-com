@@ -21,6 +21,7 @@ const db = require('./utilities/db');
 const { initAuditLogTable } = require('./utilities/auditLogger');
 const { initWhatsAppWorkerTables } = require('./utilities/whatsappWorkerQueue');
 const { initChannelPartnerTables } = require('./utilities/channelPartnerInit');
+const { initResellerFinancialAuditTable } = require('./utilities/resellerFinancialAudit');
 const { ensureClient: ensureWhatsAppClient } = require('./services/whatsappNotificationService');
 const { applyMiddleware } = require('./middleware/index');
 const apiRoutes = require('./routes/index');
@@ -57,6 +58,7 @@ const app = express();
 initAuditLogTable();
 initWhatsAppWorkerTables();
 initChannelPartnerTables();
+initResellerFinancialAuditTable();
 
 // Start cron jobs (Phase 4: Reconciliation)
 const { startReconciliationCron } = require('./cron/reconciliationCron');
