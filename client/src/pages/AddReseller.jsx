@@ -384,9 +384,8 @@ const AddReseller = () => {
       setTimeout(() => setSaved(false), 4000);
       handleReset();
     } catch (err) {
-      window.alert(
-        err?.response?.data?.message || "Partner profile save failed.",
-      );
+      const msg = err?.response?.data?.detail || err?.response?.data?.message || "Partner profile save failed.";
+      window.alert(msg);
     } finally {
       setSaving(false);
     }

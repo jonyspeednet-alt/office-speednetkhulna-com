@@ -166,6 +166,7 @@ const createReseller = async (req, res) => {
       next_pay_date,
       partner_type,
       channel_user_count,
+      profit_share_percentage,
     } = req.body || {};
 
     const resellerName = String(reseller_name || name || "").trim();
@@ -379,10 +380,12 @@ const createReseller = async (req, res) => {
           "UPDATE resellers SET channel_user_count = $1 WHERE id = $2",
           [channelUserCount, newResellerId],
         );
-      } catch (_) {}
+      } catch (err) {
+        console.warn("createReseller: channel_user_count update failed:", err.message);
+      }
 
       // Save initial profit share percentage
-      const psp = parseAmount(req.body.profit_share_percentage, 0);
+      const psp = parseAmount(profit_share_percentage, 0);
       if (psp > 0) {
         try {
           await client.query(
@@ -392,7 +395,9 @@ const createReseller = async (req, res) => {
           `,
             [newResellerId, Math.max(0, Math.min(100, psp))],
           );
-        } catch (_) {}
+        } catch (err) {
+          console.warn("createReseller: profit_share_percentage insert failed:", err.message);
+        }
       }
     }
 
@@ -478,7 +483,7 @@ const createReseller = async (req, res) => {
     console.error("createReseller:", error);
     res
       .status(500)
-      .json({ message: "Failed to create reseller", detail: error.message });
+      .json({ message: "Failed to create reseller", detail: error.message, stack: process.env.NODE_ENV === 'development' ? error.stack : undefined });
   } finally {
     client.release();
   }
