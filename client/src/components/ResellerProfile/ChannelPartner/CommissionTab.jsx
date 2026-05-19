@@ -14,8 +14,16 @@ const BalanceBadge = ({ value, zeroLabel = "শূন্য" }) => {
         {isPositive ? "▲" : "▼"} {money(abs)}
       </span>
       <span
-        className={`badge rounded-pill ${isPositive ? "bg-success" : "bg-danger"} bg-opacity-10 border ${isPositive ? "border-success" : "border-danger"} border-opacity-25`}
-        style={{ fontSize: "0.72rem", lineHeight: "1.4", padding: "2px 10px", whiteSpace: "nowrap" }}
+        className="badge rounded-pill"
+        style={{
+          fontSize: "0.72rem",
+          lineHeight: "1.4",
+          padding: "2px 10px",
+          whiteSpace: "nowrap",
+          backgroundColor: isPositive ? "#dcfce7" : "#fee2e2",
+          color: isPositive ? "#15803d" : "#b91c1c",
+          border: `1px solid ${isPositive ? "#bbf7d0" : "#fecaca"}`,
+        }}
       >
         {isPositive ? "পার্টনার পাবে" : "কোম্পানি পাবে"}
       </span>
@@ -95,11 +103,11 @@ const CommissionBreakdown = ({ summary }) => {
 
       {/* Final balance with clear direction */}
       <div
-        className={`rounded-2 p-2 d-flex align-items-center justify-content-between ${
-          closingIsPositive
-            ? "bg-success bg-opacity-10 border border-success border-opacity-25"
-            : "bg-danger bg-opacity-10 border border-danger border-opacity-25"
-        }`}
+        className="rounded-2 p-2 d-flex align-items-center justify-content-between"
+        style={{
+          backgroundColor: closingIsPositive ? "#dcfce7" : "#fee2e2",
+          border: `1px solid ${closingIsPositive ? "#bbf7d0" : "#fecaca"}`,
+        }}
       >
         <span className={`fw-bold ${closingIsPositive ? "text-success" : "text-danger"}`}>
           <i className={`fas ${closingIsPositive ? "fa-arrow-circle-up" : "fa-arrow-circle-down"} me-1`} />
